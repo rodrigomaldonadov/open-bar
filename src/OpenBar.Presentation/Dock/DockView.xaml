@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="OpenBar.Presentation.Dock.DockView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:dock="using:OpenBar.Presentation.Dock"
+    mc:Ignorable="d">
+    <UserControl.Resources>
+        <dock:BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+
+        <Style x:Key="DockListViewItemStyle" TargetType="ListViewItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="UseSystemFocusVisuals" Value="False" />
+        </Style>
+
+        <Style x:Key="DockActionButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#1AFFFFFF" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Width" Value="48" />
+            <Setter Property="Height" Value="48" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="UseSystemFocusVisuals" Value="False" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Background="Transparent">
+        <Border
+            x:Name="DockShell"
+            CornerRadius="22"
+            BorderThickness="1"
+            BorderBrush="#4DFFFFFF"
+            Padding="10"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
+            Translation="0,0,24">
+            <Border.Shadow>
+                <ThemeShadow />
+            </Border.Shadow>
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                    <GradientStop Color="#33FFFFFF" Offset="0" />
+                    <GradientStop Color="#12FFFFFF" Offset="0.55" />
+                    <GradientStop Color="#08FFFFFF" Offset="1" />
+                </LinearGradientBrush>
+            </Border.Background>
+
+            <Grid>
+                <Border
+                    x:Name="GlassTint"
+                    CornerRadius="22"
+                    Background="#26000000"
+                    Opacity="{x:Bind ViewModel.MaterialOpacity, Mode=OneWay}"
+                    IsHitTestVisible="False" />
+
+                <StackPanel
+                    Orientation="Horizontal"
+                    Spacing="0"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+
+                    <ListView
+                        x:Name="PinnedList"
+                        ItemsSource="{x:Bind ViewModel.PinnedItems, Mode=OneWay}"
+                        SelectionMode="None"
+                        IsItemClickEnabled="False"
+                        CanReorderItems="False"
+                        CanDragItems="False"
+                        AllowDrop="False"
+                        IsSwipeEnabled="False"
+                        ItemContainerStyle="{StaticResource DockListViewItemStyle}"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Padding="0"
+                        ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                        ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                        ScrollViewer.HorizontalScrollMode="Disabled"
+                        ScrollViewer.VerticalScrollMode="Disabled">
+                        <ListView.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ListView.ItemsPanel>
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="dock:DockItemViewModel">
+                                <dock:DockItemControl
+                                    Tapped="OnItemTapped"
+                                    RightTapped="OnItemRightTapped"
+                                    Margin="{x:Bind ItemMargin, Mode=OneWay}" />
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <Button
+                        x:Name="AddButton"
+                        Click="OnAddApplicationClick"
+                        Style="{StaticResource DockActionButtonStyle}"
+                        Margin="10,0,0,0"
+                        ToolTipService.ToolTip="Añadir aplicación"
+                        AutomationProperties.Name="Añadir aplicación">
+                        <FontIcon Glyph="&#xE710;" FontSize="16" />
+                    </Button>
+
+                    <Border
+                        x:Name="RunningDivider"
+                        Width="1"
+                        Height="28"
+                        Margin="8,0"
+                        Background="#40FFFFFF"
+                        Visibility="{x:Bind ViewModel.HasRunningItems, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+
+                    <ItemsControl
+                        x:Name="RunningList"
+                        ItemsSource="{x:Bind ViewModel.RunningItems, Mode=OneWay}"
+                        Visibility="{x:Bind ViewModel.HasRunningItems, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="dock:DockItemViewModel">
+                                <dock:DockItemControl
+                                    Tapped="OnItemTapped"
+                                    RightTapped="OnItemRightTapped"
+                                    Margin="{x:Bind ItemMargin, Mode=OneWay}" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <Button
+                        x:Name="SettingsButton"
+                        Click="OnSettingsClick"
+                        Style="{StaticResource DockActionButtonStyle}"
+                        Margin="10,0,0,0"
+                        ToolTipService.ToolTip="Configuración del dock"
+                        AutomationProperties.Name="Configuración del dock">
+                        <FontIcon Glyph="&#xE713;" FontSize="15" />
+                    </Button>
+                </StackPanel>
+
+                <TextBlock
+                    x:Name="EmptyHint"
+                    Text="Añadir"
+                    FontSize="12"
+                    Foreground="#CCFFFFFF"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    IsHitTestVisible="False"
+                    Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>OpenBar.Automation</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\OpenBar.Application\OpenBar.Application.csproj" />
+    <ProjectReference Include="..\OpenBar.Domain\OpenBar.Domain.csproj" />
+  </ItemGroup>
+</Project>

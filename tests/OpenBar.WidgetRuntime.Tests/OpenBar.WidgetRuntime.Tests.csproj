@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenBar.WidgetRuntime\OpenBar.WidgetRuntime.csproj" />
+    <ProjectReference Include="..\..\src\OpenBar.Widgets.Abstractions\OpenBar.Widgets.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\OpenBar.Application\OpenBar.Application.csproj" />
+    <ProjectReference Include="..\..\src\OpenBar.Infrastructure\OpenBar.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\modules\System\OpenBar.Widgets.Clock\OpenBar.Widgets.Clock.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="coverlet.collector" />
+  </ItemGroup>
+</Project>

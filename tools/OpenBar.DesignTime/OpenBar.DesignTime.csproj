@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Tooling-only project. It is intentionally NOT part of OpenBar.sln: the
+    EF Core Design package pulls build-time dependencies that would otherwise
+    add vulnerability warnings to the application build. Use it exclusively as
+    the startup project for `dotnet ef` (see docs/DEVELOPMENT.md).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>OpenBar.DesignTime</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>false</IsTestProject>
+    <!--
+      A self-contained RID-specific host lets the EF tooling load the Windows
+      SDK projection runtime pack. This project is tooling-only and is not
+      part of OpenBar.sln.
+    -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenBar.Infrastructure\OpenBar.Infrastructure.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+</Project>

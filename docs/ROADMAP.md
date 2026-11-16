@@ -1,0 +1,119 @@
+# OpenBar — Roadmap
+
+## Guiding rules
+- Work in stages: inspect → design → implement → build/test → fix → document.
+- Do not claim completion without verification.
+- Prioritize solid foundation, clean code, performance, maintainability.
+
+## Foundation 0.1 — complete (0.1.2 verified 2026-11-16)
+Goal: a functional, compilable base that restores, builds, tests, opens, stays in background, shows its dock window, and closes correctly.
+
+- [x] **Environment & tooling verified**: Windows 11 26H2; .NET SDK **10.0.404** (resolved by `global.json`) + 11.0.100; VS 2026 Insiders 18.13; Windows SDK 26100; Windows App SDK **2.6.5** builds and runs. *(VERIFIED 2026-11-16)*
+- [x] Solution `OpenBar.sln` regenerated and all 14 projects restore via CLI. *(VERIFIED)*
+- [x] Centralized dependency/configuration management verified by restore/build (`Directory.Build.props`, `Directory.Packages.props`). *(VERIFIED — 0 warnings, 0 errors)*
+- [x] **Hosting + dependency injection composition**: one generic Host built in `App.OnLaunched`, resolves all services, starts hosted services in order, stops/disposes them on shutdown. *(VERIFIED — lifecycle/disposal covered by tests)*
+- [x] **WinUI 3 application shell**: launches and loads XAML resource dictionaries at runtime. *(VERIFIED)*
+- [x] **Main window `DockWindow`**: displays as `WinUIDesktopWin32WindowClass` titled `OpenBar`, responsive. Close hides to tray; shutdown only through the tray. *(VERIFIED — UI is still the Foundation 0.1 scaffold)*
+- [~] Initial Liquid Glass visual design/resources: 7 theme dictionaries created and loaded; container/title styles applied. *(PARTIAL — not the full Liquid Glass design system yet)*
+- [x] **System tray integration**: `Shell_NotifyIcon` with a hidden top-level HWND; project-owned icon, tooltip `OpenBar`; double-click toggles the dock; right-click menu (`Abrir OpenBar`, `Mostrar u Ocultar Dock`, `Salir de OpenBar`); icon restored on `TaskbarCreated` and removed on exit. *(VERIFIED 2026-11-16)*
+- [x] **Controlled startup and shutdown**: single-instance mutex + named-pipe activation, host Start/Stop/Dispose, tray-driven exit, close-to-tray and minimize-to-tray. *(VERIFIED 2026-11-16)*
+- [x] **Persistent configuration via SQLite + EF Core** (DbContext, migrations, settings). *(VERIFIED — Foundation 0.2)*
+- [x] **Widget runtime + clock widget** (registry, lifecycle, scheduler, independent windows, SQLite recovery). *(VERIFIED — Foundation 0.3)*
+- [ ] Structured logging (production providers/configuration).
+- [ ] CPU & RAM widget.
+- [ ] Basic multi-monitor detection.
+
+### Verified build/run evidence (2026-11-16, Foundation 0.1.2)
+- `dotnet restore OpenBar.sln` → success.
+- `dotnet build OpenBar.sln -c Debug` → **0 warnings, 0 errors** (full rebuild).
+- `dotnet test OpenBar.sln -c Debug` → **25 passed / 0 failed / 0 skipped** across 4 test projects.
+- Runtime: one instance starts; dock window visible; tray window `OpenBar.TrayWindow.*` created; `Shell_NotifyIconGetRect` returns `S_OK` (icon registered); tray button/tooltip `OpenBar` found in the hidden-icons flyout.
+- Runtime: closing the dock hides it, process stays alive, tray remains registered; second launch exits with code 0 and re-shows the existing window (exactly one process); tray double-click toggles the dock; all three menu commands work; `Salir de OpenBar` terminates the process.
+
+## Foundation 0.2 — persistence (complete 2026-11-16)
+Goal: OpenBar stores and retrieves its own configuration across restarts using a real SQLite database, with controlled migrations and no secrets in the database.
+
+- [x] **Database location**: `%LOCALAPPDATA%\OpenBar\openbar.db` via `Environment.SpecialFolder.LocalApplicationData`; directory created automatically; never in the repo or next to the exe. *(VERIFIED)*
+- [x] **Schema**: `AppSettings` (key/value/timestamps), `WidgetInstances` (id, widget type, name, enabled, position, size, JSON settings, schema version, timestamps), `DockLayouts` (name, position, alignment, size, offset, auto-hide, default flag, logical monitor target). *(VERIFIED — migration `20261116070957_InitialPersistence` applied to a real database)*
+- [x] **EF Core model**: `OpenBarDbContext`, one `IEntityTypeConfiguration` per entity, enums stored as strings, `DateTimeOffset` timestamps, check constraints and filtered unique indexes. *(VERIFIED)*
+- [x] **Migrations**: generated with local `dotnet-ef` 10.0.0 through the tooling-only `tools/OpenBar.DesignTime` project; no `EnsureCreated`. *(VERIFIED)*
+- [x] **Data access services**: `IAppSettingsService`, `IWidgetInstanceService`, `IDockLayoutService` (async, transactional where multiple rows change, no shared `DbContext`). *(VERIFIED)*
+- [x] **Host integration**: database initialization + settings load run through `PersistenceStartupService` on a worker thread; shutdown clears SQLite pools. *(VERIFIED)*
+- [x] **Safety**: integrity check, pre-migration backup with retention, WAL, busy timeout, foreign keys, cross-process initialization lock, corrupt-database quarantine without deleting user data. *(VERIFIED)*
+- [x] **Tests**: real SQLite temp databases covering creation, idempotency, schema/indexes/WAL, backup, corruption, settings/widget/layout CRUD, JSON independence, restart persistence, transaction rollback and host lifecycle. *(VERIFIED)*
+- [x] **Secrets boundary**: obvious credential keys are rejected from `AppSettings`; credentials will use Credential Manager/DPAPI in a later phase. *(PARTIAL — contract/policy only; no secret store yet)*
+
+### Verified persistence evidence (2026-11-16)
+- `dotnet build OpenBar.sln -c Debug` → **0 warnings, 0 errors**.
+- `dotnet test OpenBar.sln -c Debug` → **114 passed / 0 failed / 0 skipped** across 4 test projects.
+- Runtime: first launch created `C:\Users\<user>\AppData\Local\OpenBar\openbar.db` in WAL mode, applied the initial migration and recorded `application.startup.count = 1`.
+- Runtime: second launch against the existing database applied **no** migrations and recorded `application.startup.count = 2`, proving settings survive a restart.
+- Runtime: `PRAGMA quick_check` → `ok`; no widget/layout rows were seeded (no fake data); no `.migration.lock` file remained after the process exited; the database could be opened exclusively once the app stopped.
+
+## Foundation 0.3 — Widget Runtime (complete 2026-11-16)
+Goal: a functional runtime that discovers widgets, manages their lifecycle, recovers persisted instances and hosts official widgets in independent WinUI 3 windows.
+
+- [x] **Contracts**: `WidgetDefinition`, `WidgetMetadata`, `IWidget`, `WidgetContext`, `WidgetSettings`, `IWidgetScheduler`, `IWidgetSettingsConsumer`, `WidgetBase`; stable logical ids. *(VERIFIED)*
+- [x] **Registry/discovery**: validation, duplicate rejection, provider-based discovery and per-definition error isolation. *(VERIFIED — unit tests)*
+- [x] **Lifecycle**: explicit states, per-instance concurrency gate, idempotent start/stop, restart, fault isolation, controlled errors, delete-only-after-clean-stop. *(VERIFIED — unit tests)*
+- [x] **Persistence recovery**: enabled instances recovered from `WidgetInstances`, disabled/unknown preserved, no schema change or new migration. *(VERIFIED — real SQLite tests and runtime restart)*
+- [x] **Scheduler**: shared `PeriodicTimer` scopes, minimum interval, schedule limit, non-overlap, exception isolation, deterministic disposal. *(VERIFIED — unit tests)*
+- [x] **Windows**: one WinUI 3 window per instance via `IWidgetWindowService`; runtime has no XAML dependency; DPI-scaled geometry and close-to-stop behavior. *(VERIFIED — manual runtime)*
+- [x] **Official ClockWidget**: local time with seconds, periodic updates through the scheduler, multiple instances, JSON settings, independent window. *(VERIFIED — manual runtime: 10:25:05 → 10:25:08)*
+- [x] **Host integration**: persistence → runtime → single instance → tray startup order; runtime stops before persistence; tray/single-instance behavior preserved. *(VERIFIED — host tests and manual runtime)*
+- [x] **Tests**: registry, discovery, lifecycle, scheduler, SQLite persistence, host start/stop/restart and clock logic. *(VERIFIED — 71 runtime tests; 186 total)*
+
+### Verified widget-runtime evidence (2026-11-16)
+- `dotnet build OpenBar.sln -c Debug` → **0 warnings, 0 errors** (16 projects).
+- `dotnet test OpenBar.sln -c Debug` → **186 passed / 0 failed / 0 skipped** (Domain 2, Application 47, Infrastructure 65, WidgetRuntime 71, Integration 1).
+- `dotnet list OpenBar.sln package --vulnerable --include-transitive` → no vulnerable packages.
+- Runtime: `Añadir reloj` created a persisted instance, opened the `Reloj · Reloj` window and updated the clock from `10:25:05` to `10:25:08`; a second click created `Reloj 2 · Reloj` (2 rows).
+- Runtime: disabling `Reloj 2` closed its window, persisted `IsEnabled = 0`; after process restart only `Reloj` reopened, `Reloj 2` stayed stopped/disabled.
+- Runtime: deleting both test instances removed their rows and windows; `PRAGMA quick_check` → `ok`, WAL remained active, no migration lock remained and the database opened exclusively after exit.
+- Runtime: a second process exited while exactly one `OpenBar.App` remained; the tray icon `OpenBar` was still present in the hidden-icons flyout.
+
+## Foundation 0.4 — Dock UI & Desktop Experience (complete 2026-11-16)
+Goal: replace the provisional window with a real floating dock that launches/activates applications, shows running indicators, persists pinned apps/settings and behaves well on the desktop.
+
+- [x] **Window**: borderless, topmost, acrylic, rounded, excluded from taskbar/Alt+Tab; no Explorer/taskbar replacement. *(VERIFIED — manual)*
+- [x] **Geometry/DPI**: bottom/top/left/right, centered/start/end/stretch, offsets, icon size/spacing, DPI scale, work-area clamping, monitor fallback. *(VERIFIED — manual four edges + pure tests)*
+- [x] **Pinned applications**: `PinnedApplication` table + migration, ordered CRUD, transactional reorder, Start Menu discovery and explicit path add. *(VERIFIED — real SQLite + UI)*
+- [x] **Icons**: real shell thumbnails for exe/lnk, cache, eviction/retry, fallback symbol. *(VERIFIED — manual)*
+- [x] **Launch/activate**: click launches when not running, activates when running, 1.5 s duplicate-launch cooldown. *(VERIFIED — manual Notepad launch + indicators)*
+- [x] **Running apps**: visible top-level window enumeration, AUMID/exe matching, pinned indicators, temporary unpinned running tiles, 2 s refresh only while visible. *(VERIFIED — manual Explorer/Chrome/Terminal/Notepad)*
+- [x] **Interactions**: hover magnification/tooltip, context menu (open/remove/add/settings), drag reorder persisted. *(VERIFIED — manual + DB)*
+- [x] **Auto-hide**: configurable, edge activation, leave delay, no flicker, no input capture while hidden. *(VERIFIED — manual)*
+- [x] **Settings**: separate window, persisted edge/icon/spacing/magnification/opacity/animation/auto-hide; test-widget action preserved. *(VERIFIED — manual restart)*
+- [x] **Compatibility**: ClockWidget still opens/recovers; tray/single-instance unchanged; dock absent from taskbar. *(VERIFIED)*
+
+### Verified dock evidence (2026-11-16)
+- `dotnet build OpenBar.sln -c Debug` → **0 warnings, 0 errors** (17 projects).
+- `dotnet test OpenBar.sln -c Debug` → **230 passed / 0 failed / 0 skipped** (Domain 2, Application 47, Infrastructure 74, Dock 35, WidgetRuntime 71, Integration 1).
+- Runtime: dock appeared centered at the bottom with real Notepad/Explorer/Chrome/Terminal icons, hover magnification and running dots.
+- Runtime: adding Notepad from the Start Menu/path created a persisted pinned tile; clicking launched Notepad and the running indicator merged with the pinned tile.
+- Runtime: a second pinned app (Command Prompt) was dragged over Notepad; `PinnedApplications.SortOrder` changed from notepad/cmd to cmd/notepad.
+- Runtime: the context menu removed Command Prompt from the dock and the row disappeared.
+- Runtime: auto-hide hid the dock when the cursor left and revealed it at the bottom edge; positions Bottom/Top/Left/Right produced valid centered rectangles.
+- Runtime: restart restored the bottom layout, pinned Notepad, disabled auto-hide setting and the ClockWidget window; startup journal incremented.
+- Runtime: dock is absent from the taskbar; a second OpenBar process exits and one instance remains.
+
+## Near-term (post 0.4)
+- Replace the provisional icon with final brand artwork; validate tray behavior across Explorer restarts and multi-DPI setups.
+- Dock drag/resize/snapping, multi-monitor topology validation and per-monitor layouts.
+- App management refinements: MSIX/AUMID discovery beyond Start Menu shortcuts, file picker, pin/unpin from running tiles.
+- System Bridge service abstractions + shared polling/scheduler (CPU/RAM first).
+- Dock behaviors (floating/wide modes, auto-hide timing/fullscreen refinements, accessibility/reduced motion).
+- Widget placement persistence and dock-integrated widget surfaces (still separate windows for now).
+- Settings: broader configuration UI and a Credential Manager/DPAPI secret store for integrations.
+- Migration/rollback runbook (restore from `backups/`) and automated migration tests against previous schema versions.
+
+## Mid-term
+- Integrations Hub connectors (official APIs/OAuth, credential storage via Credential Manager/DPAPI).
+- Automation engine (events/conditions/actions).
+- Additional official widgets and module packaging.
+- Out-of-process third-party plugin host + IPC.
+
+## Long-term
+- Full Lumabar-feature-parity targets via independent implementations.
+- Installer/distribution (`installers/`), telemetry-free diagnostics, accessibility and performance hardening.
+- Comprehensive automated and integration test coverage.

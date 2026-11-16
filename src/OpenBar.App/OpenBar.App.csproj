@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>OpenBar.App</RootNamespace>
+    <UseWinUI>true</UseWinUI>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\OpenBar.ico</ApplicationIcon>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\OpenBar.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenBar.Presentation\OpenBar.Presentation.csproj" />
+    <ProjectReference Include="..\OpenBar.Dock\OpenBar.Dock.csproj" />
+    <ProjectReference Include="..\OpenBar.Application\OpenBar.Application.csproj" />
+    <ProjectReference Include="..\OpenBar.Infrastructure\OpenBar.Infrastructure.csproj" />
+    <ProjectReference Include="..\OpenBar.WidgetRuntime\OpenBar.WidgetRuntime.csproj" />
+    <ProjectReference Include="..\OpenBar.Widgets.Abstractions\OpenBar.Widgets.Abstractions.csproj" />
+    <ProjectReference Include="..\..\modules\System\OpenBar.Widgets.Clock\OpenBar.Widgets.Clock.csproj" />
+    <ProjectReference Include="..\OpenBar.Integrations\OpenBar.Integrations.csproj" />
+    <ProjectReference Include="..\OpenBar.Automation\OpenBar.Automation.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+</Project>
