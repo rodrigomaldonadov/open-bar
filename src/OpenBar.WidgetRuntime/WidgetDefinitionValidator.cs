@@ -88,6 +88,8 @@ public static partial class WidgetDefinitionValidator
         ValidateSize(metadata.MaxHeight, nameof(metadata.MaxHeight));
         ValidateSize(metadata.DefaultWidth, nameof(metadata.DefaultWidth));
         ValidateSize(metadata.DefaultHeight, nameof(metadata.DefaultHeight));
+        ValidateSize(metadata.CompactWidth, nameof(metadata.CompactWidth));
+        ValidateSize(metadata.CompactHeight, nameof(metadata.CompactHeight));
 
         if (metadata.MaxWidth < metadata.MinWidth || metadata.MaxHeight < metadata.MinHeight)
         {

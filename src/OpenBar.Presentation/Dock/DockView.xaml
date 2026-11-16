@@ -108,6 +108,7 @@
                     IsHitTestVisible="False" />
 
                 <StackPanel
+                    x:Name="DockItemsPanel"
                     Orientation="Horizontal"
                     Spacing="0"
                     HorizontalAlignment="Center"
@@ -181,6 +182,23 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+
+                    <StackPanel
+                        x:Name="EmbeddedPanel"
+                        Orientation="Horizontal"
+                        Spacing="0"
+                        Background="Transparent" />
+
+                    <Button
+                        x:Name="OverflowButton"
+                        Click="OnOverflowClick"
+                        Style="{StaticResource DockActionButtonStyle}"
+                        Margin="10,0,0,0"
+                        ToolTipService.ToolTip="Más widgets"
+                        AutomationProperties.Name="Más widgets"
+                        Visibility="{x:Bind ViewModel.HasOverflow, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Text="{x:Bind ViewModel.OverflowLabel, Mode=OneWay}" FontSize="12" />
+                    </Button>
 
                     <dock:SystemStatusView
                         x:Name="SystemStatus"

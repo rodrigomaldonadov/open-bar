@@ -12,4 +12,7 @@ public sealed record WidgetInstanceInfo(
     double? PositionX,
     double? PositionY,
     double? Width,
-    double? Height);
+    double? Height,
+    OpenBar.Domain.Widgets.WidgetPresentationMode PresentationMode
+        = OpenBar.Domain.Widgets.WidgetPresentationMode.FloatingWindow,
+    int PresentationOrder = 0);

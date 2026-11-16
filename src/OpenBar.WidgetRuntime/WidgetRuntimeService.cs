@@ -19,8 +19,12 @@ public sealed partial class WidgetRuntimeService : IWidgetRuntime, IAsyncDisposa
     private readonly IWidgetInstanceService _instances;
     private readonly IWidgetRegistry _registry;
     private readonly IWidgetWindowService _windows;
+    private readonly IWidgetSurfaceService _surfaces;
     private readonly WidgetScheduler _scheduler;
     private readonly ISystemMetrics _metrics;
+    private readonly IBatteryMetrics _battery;
+    private readonly INetworkMetrics _network;
+    private readonly IStorageMetrics _storage;
     private readonly ILogger<WidgetRuntimeService> _logger;
     private readonly ConcurrentDictionary<Guid, WidgetInstanceRuntime> _entries = new();
     private readonly SemaphoreSlim _startGate = new(1, 1);
@@ -34,7 +38,11 @@ public sealed partial class WidgetRuntimeService : IWidgetRuntime, IAsyncDisposa
         IWidgetWindowService windows,
         WidgetScheduler scheduler,
         ILogger<WidgetRuntimeService> logger,
-        ISystemMetrics? metrics = null)
+        ISystemMetrics? metrics = null,
+        IWidgetSurfaceService? surfaces = null,
+        IBatteryMetrics? battery = null,
+        INetworkMetrics? network = null,
+        IStorageMetrics? storage = null)
     {
         ArgumentNullException.ThrowIfNull(instances);
         ArgumentNullException.ThrowIfNull(registry);
@@ -44,9 +52,13 @@ public sealed partial class WidgetRuntimeService : IWidgetRuntime, IAsyncDisposa
         _instances = instances;
         _registry = registry;
         _windows = windows;
+        _surfaces = surfaces ?? NullWidgetSurfaceService.Instance;
         _scheduler = scheduler;
         _logger = logger;
         _metrics = metrics ?? NullSystemMetrics.Instance;
+        _battery = battery ?? NullBatteryMetrics.Instance;
+        _network = network ?? NullNetworkMetrics.Instance;
+        _storage = storage ?? NullStorageMetrics.Instance;
 
         _windows.CloseRequested += OnWindowCloseRequested;
     }
@@ -92,7 +104,7 @@ public sealed partial class WidgetRuntimeService : IWidgetRuntime, IAsyncDisposa
                 }
 
                 var definition = _registry.Find(entity.WidgetId);
-                var entry = new WidgetInstanceRuntime(definition, entity, _scheduler, _metrics, _logger);
+                var entry = new WidgetInstanceRuntime(definition, entity, _scheduler, _metrics, _battery, _network, _storage, _logger);
                 _entries[entity.Id] = entry;
 
                 if (definition is null)
@@ -110,7 +122,7 @@ public sealed partial class WidgetRuntimeService : IWidgetRuntime, IAsyncDisposa
 
                 try
                 {
-                    await StartAndOpenAsync(entry, cancellationToken).ConfigureAwait(false);
+                    await StartAndPresentAsync(entry, cancellationToken).ConfigureAwait(false);
                     started++;
                 }
                 catch (OperationCanceledException)
@@ -215,12 +227,12 @@ public sealed partial class WidgetRuntimeService : IWidgetRuntime, IAsyncDisposa
                 ex);
         }
 
-        var entry = new WidgetInstanceRuntime(definition, entity, _scheduler, _metrics, _logger);
+        var entry = new WidgetInstanceRuntime(definition, entity, _scheduler, _metrics, _battery, _network, _storage, _logger);
         _entries[entity.Id] = entry;
 
         try
         {
-            await StartAndOpenAsync(entry, cancellationToken).ConfigureAwait(false);
+            await StartAndPresentAsync(entry, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -246,7 +258,7 @@ public sealed partial class WidgetRuntimeService : IWidgetRuntime, IAsyncDisposa
     {
         ThrowIfDisposed();
         var entry = GetEntryOrThrow(instanceId);
-        await StartAndOpenAsync(entry, cancellationToken).ConfigureAwait(false);
+        await StartAndPresentAsync(entry, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<bool> StopAsync(Guid instanceId, CancellationToken cancellationToken = default)
@@ -254,7 +266,7 @@ public sealed partial class WidgetRuntimeService : IWidgetRuntime, IAsyncDisposa
         ThrowIfDisposed();
         var entry = GetEntryOrThrow(instanceId);
         var success = await entry.StopAsync(cancellationToken).ConfigureAwait(false);
-        await CloseWindowAsync(instanceId, cancellationToken).ConfigureAwait(false);
+        await ClosePresentationAsync(instanceId, cancellationToken).ConfigureAwait(false);
         return success;
     }
 
@@ -264,7 +276,7 @@ public sealed partial class WidgetRuntimeService : IWidgetRuntime, IAsyncDisposa
         var entry = GetEntryOrThrow(instanceId);
 
         var stopped = await entry.StopAsync(cancellationToken).ConfigureAwait(false);
-        await CloseWindowAsync(instanceId, cancellationToken).ConfigureAwait(false);
+        await ClosePresentationAsync(instanceId, cancellationToken).ConfigureAwait(false);
 
         if (!stopped)
         {
@@ -274,7 +286,7 @@ public sealed partial class WidgetRuntimeService : IWidgetRuntime, IAsyncDisposa
                 "The widget could not be stopped cleanly; it was not restarted.");
         }
 
-        await StartAndOpenAsync(entry, cancellationToken).ConfigureAwait(false);
+        await StartAndPresentAsync(entry, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<bool> DeleteAsync(Guid instanceId, CancellationToken cancellationToken = default)
@@ -286,7 +298,7 @@ public sealed partial class WidgetRuntimeService : IWidgetRuntime, IAsyncDisposa
         if (entry is not null)
         {
             var stopped = await entry.StopAsync(cancellationToken).ConfigureAwait(false);
-            await CloseWindowAsync(instanceId, cancellationToken).ConfigureAwait(false);
+            await ClosePresentationAsync(instanceId, cancellationToken).ConfigureAwait(false);
 
             if (!stopped)
             {
@@ -326,7 +338,7 @@ public sealed partial class WidgetRuntimeService : IWidgetRuntime, IAsyncDisposa
             if (entry is not null)
             {
                 var stopped = await entry.StopAsync(cancellationToken).ConfigureAwait(false);
-                await CloseWindowAsync(instanceId, cancellationToken).ConfigureAwait(false);
+                await ClosePresentationAsync(instanceId, cancellationToken).ConfigureAwait(false);
 
                 if (!stopped)
                 {
@@ -364,8 +376,67 @@ public sealed partial class WidgetRuntimeService : IWidgetRuntime, IAsyncDisposa
             return;
         }
 
-        await StartAndOpenAsync(entry, cancellationToken).ConfigureAwait(false);
+        await StartAndPresentAsync(entry, cancellationToken).ConfigureAwait(false);
         LogInstanceEnabled(_logger, instanceId);
+    }
+
+    public async Task SetPresentationAsync(
+        Guid instanceId,
+        WidgetPresentationMode presentationMode,
+        int presentationOrder,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        if (presentationOrder < 0)
+        {
+            throw new WidgetValidationException("The widget presentation order cannot be negative.");
+        }
+
+        var entity = await _instances.GetAsync(instanceId, cancellationToken).ConfigureAwait(false)
+            ?? throw new WidgetNotFoundException(instanceId);
+
+        var previousMode = entity.PresentationMode;
+        var updated = await _instances
+            .UpdatePresentationAsync(instanceId, presentationMode, presentationOrder, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (!_entries.TryGetValue(instanceId, out var entry))
+        {
+            return;
+        }
+
+        await entry.ApplyEntityAsync(updated, cancellationToken).ConfigureAwait(false);
+
+        if (previousMode == presentationMode)
+        {
+            if (presentationMode == WidgetPresentationMode.DockEmbedded
+                && entry.State == WidgetInstanceState.Running)
+            {
+                await _surfaces.UpdateOrderAsync(instanceId, presentationOrder, cancellationToken).ConfigureAwait(false);
+            }
+
+            return;
+        }
+
+        if (!updated.IsEnabled || !entry.IsAvailable || entry.State != WidgetInstanceState.Running)
+        {
+            return;
+        }
+
+        var stopped = await entry.StopAsync(cancellationToken).ConfigureAwait(false);
+        await ClosePresentationAsync(instanceId, cancellationToken).ConfigureAwait(false);
+
+        if (!stopped)
+        {
+            throw new WidgetLifecycleException(
+                instanceId,
+                "change presentation",
+                "The widget could not be stopped cleanly; the presentation mode was persisted but the widget remains stopped.");
+        }
+
+        await StartAndPresentAsync(entry, cancellationToken).ConfigureAwait(false);
+        LogPresentationChanged(_logger, instanceId, presentationMode);
     }
 
     public async Task UpdateSettingsAsync(
@@ -463,32 +534,71 @@ public sealed partial class WidgetRuntimeService : IWidgetRuntime, IAsyncDisposa
             LogWindowsCloseFailed(_logger, ex);
         }
 
+        try
+        {
+            await _surfaces.CloseAllAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            LogSurfacesCloseFailed(_logger, ex);
+        }
+
         Volatile.Write(ref _started, 0);
     }
 
-    private async Task StartAndOpenAsync(WidgetInstanceRuntime entry, CancellationToken cancellationToken)
+    private async Task StartAndPresentAsync(WidgetInstanceRuntime entry, CancellationToken cancellationToken)
     {
         await entry.StartAsync(cancellationToken).ConfigureAwait(false);
+        var mode = entry.ToInfo().PresentationMode;
 
         try
         {
-            await _windows.OpenAsync(CreateWindowRequest(entry), cancellationToken).ConfigureAwait(false);
+            if (mode == WidgetPresentationMode.DockEmbedded)
+            {
+                await _surfaces.OpenAsync(CreateSurfaceRequest(entry), cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                await _windows.OpenAsync(CreateWindowRequest(entry), cancellationToken).ConfigureAwait(false);
+            }
         }
         catch (OperationCanceledException)
         {
             _ = await entry.StopAsync(CancellationToken.None).ConfigureAwait(false);
+            await ClosePresentationAsync(entry.Id, CancellationToken.None).ConfigureAwait(false);
             throw;
         }
         catch (Exception ex)
         {
             _ = await entry.StopAsync(CancellationToken.None).ConfigureAwait(false);
+            await ClosePresentationAsync(entry.Id, CancellationToken.None).ConfigureAwait(false);
             await entry.MarkFaultedAsync(ex).ConfigureAwait(false);
             throw new WidgetLifecycleException(
                 entry.Id,
-                "open window",
-                $"Widget '{entry.InstanceName}' could not create its window: {ex.Message}",
+                "open presentation",
+                $"Widget '{entry.InstanceName}' could not create its {(mode == WidgetPresentationMode.DockEmbedded ? "dock surface" : "window")}: {ex.Message}",
                 ex);
         }
+    }
+
+    private static WidgetSurfaceRequest CreateSurfaceRequest(WidgetInstanceRuntime entry)
+    {
+        var definition = entry.Definition;
+
+        return new WidgetSurfaceRequest
+        {
+            InstanceId = entry.Id,
+            WidgetId = entry.WidgetId,
+            Title = $"{entry.InstanceName} · {definition.Metadata.DisplayName}",
+            Widget = entry.Widget
+                ?? throw new InvalidOperationException($"Widget instance {entry.Id} has no running widget."),
+            CompactWidth = definition.Metadata.CompactWidth,
+            CompactHeight = definition.Metadata.CompactHeight,
+            Order = entry.ToInfo().PresentationOrder
+        };
     }
 
     private static WidgetWindowRequest CreateWindowRequest(WidgetInstanceRuntime entry)
@@ -508,6 +618,24 @@ public sealed partial class WidgetRuntimeService : IWidgetRuntime, IAsyncDisposa
             PositionX = info.PositionX,
             PositionY = info.PositionY
         };
+    }
+
+    private async Task ClosePresentationAsync(Guid instanceId, CancellationToken cancellationToken)
+    {
+        await CloseWindowAsync(instanceId, cancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            await _surfaces.CloseAsync(instanceId, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            LogSurfaceCloseFailed(_logger, instanceId, ex);
+        }
     }
 
     private async Task CloseWindowAsync(Guid instanceId, CancellationToken cancellationToken)
@@ -705,5 +833,22 @@ public sealed partial class WidgetRuntimeService : IWidgetRuntime, IAsyncDisposa
     private static partial void LogWindowCloseStopFailed(
         ILogger<WidgetRuntimeService> logger,
         Guid instanceId,
+        Exception exception);
+
+    [LoggerMessage(EventId = 5315, Level = LogLevel.Information, Message = "Widget instance {InstanceId} changed presentation to {PresentationMode}.")]
+    private static partial void LogPresentationChanged(
+        ILogger<WidgetRuntimeService> logger,
+        Guid instanceId,
+        WidgetPresentationMode presentationMode);
+
+    [LoggerMessage(EventId = 5316, Level = LogLevel.Error, Message = "Embedded surface {InstanceId} could not be closed.")]
+    private static partial void LogSurfaceCloseFailed(
+        ILogger<WidgetRuntimeService> logger,
+        Guid instanceId,
+        Exception exception);
+
+    [LoggerMessage(EventId = 5317, Level = LogLevel.Error, Message = "Embedded widget surfaces could not be closed during shutdown.")]
+    private static partial void LogSurfacesCloseFailed(
+        ILogger<WidgetRuntimeService> logger,
         Exception exception);
 }

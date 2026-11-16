@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using OpenBar.Application.Persistence;
 using OpenBar.Domain.Widgets;
 using Xunit;
@@ -212,6 +213,29 @@ public sealed class WidgetInstanceServiceTests
     }
 
     [Fact]
+    public async Task PresentationModeAndOrderPersistAcrossReload()
+    {
+        await using var database = new PersistenceTestContext();
+        await InitializeAsync(database);
+
+        var service = database.CreateWidgetInstanceService();
+        var created = await service.CreateAsync(NewInstance("openbar.cpu", "CPU"));
+
+        Assert.Equal(WidgetPresentationMode.FloatingWindow, created.PresentationMode);
+        Assert.Equal(0, created.PresentationOrder);
+
+        _ = await service.UpdatePresentationAsync(
+            created.Id,
+            WidgetPresentationMode.DockEmbedded,
+            3);
+
+        var reloaded = await database.CreateWidgetInstanceService().GetAsync(created.Id);
+        Assert.NotNull(reloaded);
+        Assert.Equal(WidgetPresentationMode.DockEmbedded, reloaded.PresentationMode);
+        Assert.Equal(3, reloaded.PresentationOrder);
+    }
+
+    [Fact]
     public async Task DeleteRemovesInstance()
     {
         await using var database = new PersistenceTestContext();
@@ -239,6 +263,36 @@ public sealed class WidgetInstanceServiceTests
 
         Assert.NotNull(reloaded);
         Assert.Equal("""{"zone":"UTC"}""", reloaded.SettingsJson);
+    }
+
+    [Fact]
+    public async Task MigratingAnExistingDatabaseDefaultsInstancesToFloatingWindows()
+    {
+        await using var database = new PersistenceTestContext();
+        Directory.CreateDirectory(database.DirectoryPath);
+        await using var oldContext = await database.CreateDbContextAsync();
+        await oldContext.Database.MigrateAsync("VisualPolish");
+
+        var id = Guid.NewGuid();
+        await oldContext.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO WidgetInstances
+                (Id, WidgetId, InstanceName, IsEnabled, SettingsJson, SettingsSchemaVersion, CreatedAt, UpdatedAt)
+            VALUES
+                ({0}, 'openbar.cpu', 'CPU', 1, '{{"intervalSeconds":1}}', 1, {1}, {1})
+            """,
+            id.ToString(),
+            DateTimeOffset.UtcNow.ToString("O"));
+
+        await oldContext.Database.MigrateAsync();
+
+        await using var current = await database.CreateDbContextAsync();
+        var row = await current.Database
+            .SqlQueryRaw<string>(
+                "SELECT PresentationMode || '|' || PresentationOrder || '|' || SettingsJson AS Value FROM WidgetInstances WHERE InstanceName = 'CPU'")
+            .SingleAsync();
+
+        Assert.Equal("""FloatingWindow|0|{"intervalSeconds":1}""", row);
     }
 
     private static WidgetInstance NewInstance(string widgetId, string instanceName, string settingsJson = "{}")

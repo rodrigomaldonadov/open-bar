@@ -29,6 +29,12 @@ public sealed class WidgetContext
     /// </summary>
     public ISystemMetrics Metrics { get; init; } = NullSystemMetrics.Instance;
 
+    public IBatteryMetrics Battery { get; init; } = NullBatteryMetrics.Instance;
+
+    public INetworkMetrics Network { get; init; } = NullNetworkMetrics.Instance;
+
+    public IStorageMetrics Storage { get; init; } = NullStorageMetrics.Instance;
+
     public WidgetSettings Settings
     {
         get => _settings;

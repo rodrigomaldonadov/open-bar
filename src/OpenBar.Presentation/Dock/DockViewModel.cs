@@ -48,6 +48,7 @@ public sealed partial class DockViewModel : ObservableObject, IDisposable
     private bool _initialized;
     private IDisposable? _systemMetricsSubscription;
     private SystemMetricsSnapshot _systemStatus = SystemMetricsSnapshot.Empty;
+    private int _overflowCount;
     private bool _active;
     private bool _refreshing;
     private bool _suppressReorder;
@@ -227,6 +228,34 @@ public sealed partial class DockViewModel : ObservableObject, IDisposable
     }
 
     public int ItemCount => PinnedItems.Count + RunningItems.Count + 3;
+
+    public bool IsVertical => Position is DockEdge.Left or DockEdge.Right;
+
+    public int OverflowCount => _overflowCount;
+
+    public bool HasOverflow => _overflowCount > 0;
+
+    public string OverflowLabel => $"+{_overflowCount}";
+
+    public void SetOverflow(int count)
+    {
+        var value = Math.Max(0, count);
+        if (_overflowCount == value)
+        {
+            return;
+        }
+
+        _overflowCount = value;
+        OnPropertyChanged(nameof(OverflowCount));
+        OnPropertyChanged(nameof(HasOverflow));
+        OnPropertyChanged(nameof(OverflowLabel));
+    }
+
+    public void RefreshItemLayout()
+    {
+        ApplyItemLayout(PinnedItems);
+        ApplyItemLayout(RunningItems);
+    }
 
     public int PinnedCount => PinnedItems.Count;
 
@@ -502,7 +531,8 @@ public sealed partial class DockViewModel : ObservableObject, IDisposable
                 Spacing,
                 Magnification,
                 EffectiveAnimationDurationMs,
-                isLast: index == items.Count - 1);
+                isLast: index == items.Count - 1,
+                vertical: Position is DockEdge.Left or DockEdge.Right);
         }
     }
 

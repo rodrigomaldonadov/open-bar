@@ -151,11 +151,44 @@ Goal: reusable, demand-driven Windows system metrics plus official CPU/memory wi
 - VERIFIED: themes, proximity magnification, auto-hide delays, Chrome F11 fullscreen hide/restore, primary<->secondary monitor move, restart persistence, tray/single-instance.
 - BLOCKED: mixed-DPI across two displays, exclusive fullscreen game, monitor disconnect/repositioning with hardware change, isolated measurement of fade/reduced-motion visuals.
 
-## Near-term (post 0.6)
+## Foundation 0.7 - Integrated Widget Surfaces & Advanced Widgets (complete 2026-11-16)
+Goal: let users present each widget inside the dock or in an independent window, with stable lifecycles, new official widgets and responsible space management.
+
+- [x] **Presentation model**: `DockEmbedded`/`FloatingWindow` persisted per instance; `IntegratedWidgetSurfaces` migration adds mode/order with `FloatingWindow` defaults. *(VERIFIED - migration from a 0.6 database preserved rows/settings)*
+- [x] **Embedded host**: dock-owned surfaces with one lifecycle per instance, stable views, theme-aware chrome, context menu and mode switching. *(VERIFIED - runtime + tests)*
+- [x] **No duplicate schedules**: mode changes stop/dispose the current widget and scheduler before starting the new host; ordering changes do not restart. *(VERIFIED - `WidgetPresentationTests`)*
+- [x] **CPU/RAM embedded**: existing widgets render as compact dock surfaces and still support independent windows. *(VERIFIED - runtime both directions)*
+- [x] **Battery widget** (`openbar.battery`): native battery percentage/charging; unavailable without battery. *(VERIFIED - runtime 96% AC + service tests; no-battery hardware BLOCKED)*
+- [x] **Network widget** (`openbar.network`): connectivity, download/upload from cumulative deltas, first-sample unavailable, adapter selection. *(VERIFIED - runtime Ethernet + delta tests)*
+- [x] **Storage widget** (`openbar.storage`): used/total/percentage from DriveInfo, volume selection, no recursive scan. *(VERIFIED - runtime C: 63% + tests)*
+- [x] **Settings**: installed instances, add/delete, enable/disable, mode, order, interval, unit, adapter and volume. *(VERIFIED - UIA + SQLite)*
+- [x] **Space management**: soft 85% length cap, hidden surfaces and `+N` overflow menu. *(VERIFIED - runtime overflow/reveal)*
+- [x] **Four orientations**: real vertical layout for icons and surfaces, magnification on the correct axis. *(VERIFIED - visual Bottom/Left; geometry/tests for all edges)*
+- [x] **Auto-hide/restart**: surfaces hide/reveal with the dock and recover after restart. *(VERIFIED - runtime)*
+
+### Verified Foundation 0.7 evidence
+- `dotnet build OpenBar.sln -c Debug` -> **0 warnings, 0 errors** (19 projects).
+- `dotnet test OpenBar.sln -c Debug` -> **277 passed / 0 failed / 0 skipped** (Domain 2, Application 47, Infrastructure 96, Dock 46, WidgetRuntime 85, Integration 1).
+- `dotnet list OpenBar.sln package --vulnerable --include-transitive` -> no vulnerable packages.
+- Runtime: 0.6 DB migrated from 3 to 4 migrations; CPU/memory rows kept `FloatingWindow` and their JSON.
+- Runtime: five embedded widgets, order persisted (`Red 0`, `Storage 1`, `Battery 2`, `CPU 3`, `Memory 4`), `+1` overflow, reveal moved a hidden widget to the front.
+- Runtime: context menu moved network to a floating window; disable/enable, add/delete and order up/down persisted.
+- Runtime: Left dock `150x841` with a readable network surface and `+4`; Bottom restored `1615x120`.
+- Runtime: auto-hide hid the dock and edge reveal restored it; restart recovered surfaces without opening widget windows.
+- Performance (5 widgets + chip, embedded): **453-688 ms / 10 s**, **74.8-90.8 MB private**. Same widgets floating: **703 ms / 10 s**, 104.6 MB. Disabled (chip only): **219 ms / 10 s**, 71.4 MB. 0.6 reference: 562 ms / 89.9 MB with two floating widgets.
+
+### Foundation 0.7 limitations
+- Hidden overflow surfaces remain active; there is no suspend-on-hide yet.
+- Direct drag reorder of embedded surfaces is not implemented; settings/overflow ordering is.
+- Battery no-hardware, mixed-DPI, exclusive-game fullscreen and monitor-disconnect remain BLOCKED.
+- Temperature/per-core metrics are intentionally not implemented.
+
+## Near-term (post 0.7)
 - Validate mixed-DPI multi-monitor setups and per-monitor dock layouts.
 - Dock drag/resize/snapping, floating/wide modes and auto-hide fullscreen refinements.
+- Direct drag reorder for embedded widget surfaces and suspend/resume for hidden overflow.
 - Full MSIX/AUMID application picker and arbitrary Start Menu/AppsFolder pinning.
-- Additional official widgets and richer System Bridge sources (battery, storage, network, temperature where hardware allows).
+- Richer System Bridge sources (temperature where reliable, per-core CPU, per-process).
 - Final brand artwork and the complete Liquid Glass design system.
 - Credential Manager/DPAPI secret store for integrations.
 - Out-of-process third-party plugin host + IPC (ALC is not a security boundary).

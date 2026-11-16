@@ -16,6 +16,9 @@ internal sealed partial class WidgetInstanceRuntime : IAsyncDisposable
     private readonly WidgetDefinition? _definition;
     private readonly WidgetScheduler _scheduler;
     private readonly OpenBar.SystemBridge.ISystemMetrics _metrics;
+    private readonly OpenBar.SystemBridge.IBatteryMetrics _battery;
+    private readonly OpenBar.SystemBridge.INetworkMetrics _network;
+    private readonly OpenBar.SystemBridge.IStorageMetrics _storage;
     private readonly ILogger _logger;
 
     private WidgetInstance _entity;
@@ -30,12 +33,18 @@ internal sealed partial class WidgetInstanceRuntime : IAsyncDisposable
         WidgetInstance entity,
         WidgetScheduler scheduler,
         OpenBar.SystemBridge.ISystemMetrics metrics,
+        OpenBar.SystemBridge.IBatteryMetrics battery,
+        OpenBar.SystemBridge.INetworkMetrics network,
+        OpenBar.SystemBridge.IStorageMetrics storage,
         ILogger logger)
     {
         _definition = definition;
         _entity = entity;
         _scheduler = scheduler;
         _metrics = metrics;
+        _battery = battery;
+        _network = network;
+        _storage = storage;
         _logger = logger;
         _state = definition is null ? WidgetInstanceState.Unavailable : WidgetInstanceState.Created;
     }
@@ -67,7 +76,9 @@ internal sealed partial class WidgetInstanceRuntime : IAsyncDisposable
             _entity.PositionX,
             _entity.PositionY,
             _entity.Width,
-            _entity.Height);
+            _entity.Height,
+            _entity.PresentationMode,
+            _entity.PresentationOrder);
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -114,6 +125,9 @@ internal sealed partial class WidgetInstanceRuntime : IAsyncDisposable
                     Logger = _logger,
                     Scheduler = _schedulerScope,
                     Metrics = _metrics,
+                    Battery = _battery,
+                    Network = _network,
+                    Storage = _storage,
                     Settings = ParseSettings()
                 };
 

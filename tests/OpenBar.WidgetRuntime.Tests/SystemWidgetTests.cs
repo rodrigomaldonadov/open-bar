@@ -92,10 +92,107 @@ public sealed class SystemWidgetTests
         await widget.DisposeAsync();
     }
 
+    [Fact]
+    public async Task BatteryWidgetUsesTheSharedBatteryServiceAndScheduler()
+    {
+        var scheduler = new RecordingScheduler();
+        var battery = new FakeBatteryMetrics
+        {
+            Snapshot = new BatteryMetricsSnapshot(true, 87, false, false, DateTimeOffset.UtcNow)
+        };
+        var widget = new BatteryWidget();
+
+        await widget.InitializeAsync(CreateContext(
+            scheduler,
+            new FakeSystemMetrics(),
+            """{"intervalSeconds":4}""",
+            battery: battery));
+        await widget.StartAsync();
+
+        Assert.Equal(1, battery.RefreshCalls);
+        Assert.Equal("battery.sample", Assert.Single(scheduler.Schedules).Name);
+        Assert.Equal(TimeSpan.FromSeconds(4), scheduler.Schedules[0].Interval);
+
+        await widget.StopAsync();
+        await widget.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task NetworkWidgetPassesTheSelectedAdapter()
+    {
+        var scheduler = new RecordingScheduler();
+        var network = new FakeNetworkMetrics
+        {
+            Snapshot = new NetworkMetricsSnapshot(
+                true,
+                new NetworkAdapterInfo("eth0", "Ethernet", "Ethernet"),
+                1024,
+                512,
+                DateTimeOffset.UtcNow)
+        };
+        var widget = new NetworkWidget();
+
+        await widget.InitializeAsync(CreateContext(
+            scheduler,
+            new FakeSystemMetrics(),
+            """{"intervalSeconds":3,"adapterId":"eth0"}""",
+            network: network));
+        await widget.StartAsync();
+
+        Assert.Equal("eth0", network.LastAdapterId);
+        Assert.Equal(TimeSpan.FromSeconds(3), Assert.Single(scheduler.Schedules).Interval);
+
+        await widget.StopAsync();
+        await widget.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task StorageWidgetPassesTheSelectedVolume()
+    {
+        var scheduler = new RecordingScheduler();
+        var volume = new StorageVolumeInfo(@"C:\", "System", @"C:\", 1_000, 250);
+        var storage = new FakeStorageMetrics
+        {
+            Snapshot = new StorageMetricsSnapshot(true, volume, 750, 75, DateTimeOffset.UtcNow)
+        };
+        var widget = new StorageWidget();
+
+        await widget.InitializeAsync(CreateContext(
+            scheduler,
+            new FakeSystemMetrics(),
+            """{"intervalSeconds":5,"volumeId":"C:\\"}""",
+            storage: storage));
+        await widget.StartAsync();
+
+        Assert.Equal(@"C:\", storage.LastVolumeId);
+        Assert.Equal(TimeSpan.FromSeconds(5), Assert.Single(scheduler.Schedules).Interval);
+
+        await widget.StopAsync();
+        await widget.DisposeAsync();
+    }
+
+    [Fact]
+    public void NewSystemDefinitionsExposeCompactDockMetadata()
+    {
+        var battery = BatteryWidgetDefinition.Create();
+        var network = NetworkWidgetDefinition.Create();
+        var storage = StorageWidgetDefinition.Create();
+
+        Assert.Equal("openbar.battery", battery.WidgetId);
+        Assert.Equal("openbar.network", network.WidgetId);
+        Assert.Equal("openbar.storage", storage.WidgetId);
+        Assert.True(battery.Metadata.CompactWidth > 0);
+        Assert.True(network.Metadata.CompactHeight > 0);
+        Assert.True(storage.Metadata.Capabilities.HasFlag(WidgetCapabilities.Settings));
+    }
+
     private static WidgetContext CreateContext(
         IWidgetScheduler scheduler,
         ISystemMetrics metrics,
-        string json)
+        string json,
+        IBatteryMetrics? battery = null,
+        INetworkMetrics? network = null,
+        IStorageMetrics? storage = null)
         => new()
         {
             InstanceId = Guid.NewGuid(),
@@ -104,6 +201,9 @@ public sealed class SystemWidgetTests
             Logger = NullLogger.Instance,
             Scheduler = scheduler,
             Metrics = metrics,
+            Battery = battery ?? NullBatteryMetrics.Instance,
+            Network = network ?? NullNetworkMetrics.Instance,
+            Storage = storage ?? NullStorageMetrics.Instance,
             Settings = WidgetSettings.Parse(json, 1)
         };
 

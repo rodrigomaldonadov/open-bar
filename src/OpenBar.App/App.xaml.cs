@@ -17,6 +17,7 @@ using OpenBar.Infrastructure.Windows.SingleInstance;
 using OpenBar.Infrastructure.Windows.SystemBridge;
 using OpenBar.Infrastructure.Windows.SystemTray;
 using OpenBar.Presentation.Dock;
+using OpenBar.Presentation.Widgets;
 using OpenBar.SystemBridge;
 using OpenBar.WidgetRuntime;
 using OpenBar.Widgets.Clock;
@@ -206,6 +207,11 @@ public partial class App : Microsoft.UI.Xaml.Application
 
                     return viewModel;
                 });
+                services.AddSingleton<WidgetSurfaceHost>(provider => new WidgetSurfaceHost(
+                    _dispatcherQueue,
+                    provider.GetRequiredService<ILogger<WidgetSurfaceHost>>()));
+                services.AddSingleton<IWidgetSurfaceService>(
+                    provider => provider.GetRequiredService<WidgetSurfaceHost>());
                 services.AddSingleton<DockView>();
 
                 // The runtime starts after persistence (hosted-service order) and
@@ -215,6 +221,9 @@ public partial class App : Microsoft.UI.Xaml.Application
                 services.AddSingleton(ClockWidgetDefinition.Create());
                 services.AddSingleton(CpuWidgetDefinition.Create());
                 services.AddSingleton(MemoryWidgetDefinition.Create());
+                services.AddSingleton(BatteryWidgetDefinition.Create());
+                services.AddSingleton(NetworkWidgetDefinition.Create());
+                services.AddSingleton(StorageWidgetDefinition.Create());
                 services.AddSingleton<WidgetWindowService>(provider => new WidgetWindowService(
                     _dispatcherQueue,
                     provider.GetRequiredService<ILogger<WidgetWindowService>>()));
@@ -262,7 +271,9 @@ public partial class App : Microsoft.UI.Xaml.Application
             _dockTools = new DockToolsWindow(
                 host.Services.GetRequiredService<DockViewModel>(),
                 host.Services.GetRequiredService<IWidgetRuntime>(),
-                host.Services.GetRequiredService<IWidgetInstanceService>());
+                host.Services.GetRequiredService<IWidgetInstanceService>(),
+                host.Services.GetRequiredService<INetworkMetrics>(),
+                host.Services.GetRequiredService<IStorageMetrics>());
 
             _windowService?.SetInteractionSuppressed(true);
             _dockTools.Closed += (_, _) =>

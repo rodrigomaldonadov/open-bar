@@ -21,6 +21,12 @@ public sealed class WidgetInstance
 
     public bool IsEnabled { get; set; } = true;
 
+    /// <summary>How the instance is hosted. Defaults to the pre-0.7 window.</summary>
+    public WidgetPresentationMode PresentationMode { get; set; } = WidgetPresentationMode.FloatingWindow;
+
+    /// <summary>Order inside the dock's embedded surface area.</summary>
+    public int PresentationOrder { get; set; }
+
     /// <summary>Horizontal position in device-independent pixels, if placed.</summary>
     public double? PositionX { get; set; }
 

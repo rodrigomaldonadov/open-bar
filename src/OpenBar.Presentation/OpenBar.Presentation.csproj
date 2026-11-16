@@ -7,6 +7,8 @@
     <ProjectReference Include="..\OpenBar.Application\OpenBar.Application.csproj" />
     <ProjectReference Include="..\OpenBar.Dock\OpenBar.Dock.csproj" />
     <ProjectReference Include="..\OpenBar.SystemBridge\OpenBar.SystemBridge.csproj" />
+    <ProjectReference Include="..\OpenBar.Widgets.Abstractions\OpenBar.Widgets.Abstractions.csproj" />
+    <ProjectReference Include="..\OpenBar.WidgetRuntime\OpenBar.WidgetRuntime.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" />

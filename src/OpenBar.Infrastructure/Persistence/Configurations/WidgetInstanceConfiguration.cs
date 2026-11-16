@@ -30,6 +30,9 @@ internal sealed class WidgetInstanceConfiguration : IEntityTypeConfiguration<Wid
                 table.HasCheckConstraint(
                     "CK_WidgetInstances_Height",
                     "\"Height\" IS NULL OR \"Height\" > 0");
+                table.HasCheckConstraint(
+                    "CK_WidgetInstances_PresentationOrder",
+                    "\"PresentationOrder\" >= 0");
             });
 
         builder.HasKey(instance => instance.Id);
@@ -43,6 +46,14 @@ internal sealed class WidgetInstanceConfiguration : IEntityTypeConfiguration<Wid
             .IsRequired();
 
         builder.Property(instance => instance.IsEnabled)
+            .IsRequired();
+
+        builder.Property(instance => instance.PresentationMode)
+            .HasConversion<string>()
+            .HasMaxLength(32)
+            .IsRequired();
+
+        builder.Property(instance => instance.PresentationOrder)
             .IsRequired();
 
         builder.Property(instance => instance.SettingsJson)

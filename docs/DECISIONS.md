@@ -432,7 +432,7 @@
 
 ## ADR-0046: A read-only dock status chip, not an embedded widget host
 - **Date:** 2026-11-16
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0049 (the status chip remains)
 - **Context:** A dock-integrated surface should improve visibility without breaking independent widget windows, lifecycle, persistence or interactions.
 - **Decision:**
   - Add a compact `SystemStatusView` chip to the dock item flow, included in geometry for all four edges.
@@ -449,3 +449,53 @@
   - Update through `IWidgetRuntime.UpdateSettingsAsync` so validation, persistence and `IWidgetSettingsConsumer` stay centralized.
   - Expose the same values in `DockToolsWindow` through `IWidgetInstanceService`.
 - **Consequences:** No migration or new table; settings survive restart and remain independent per instance. Invalid JSON falls back to defaults with a warning.
+
+## ADR-0048: Persist presentation mode per instance and restart on transitions
+- **Date:** 2026-11-16
+- **Status:** Accepted
+- **Context:** Users need embedded and independent-window presentations without duplicating a widget's lifecycle.
+- **Decision:**
+  - Add `WidgetPresentationMode` (`FloatingWindow` default, `DockEmbedded`) and `PresentationOrder` to `WidgetInstances` with the `IntegratedWidgetSurfaces` migration.
+  - `WidgetRuntimeService.SetPresentationAsync` stops the running widget and awaits scheduler disposal before closing the old host and starting a fresh widget in the new host.
+  - Order-only changes update the surface host without restarting.
+- **Consequences:** One schedule and one view exist at any time; a mode switch is a controlled restart, not a second parallel lifecycle. Existing rows remain floating.
+
+## ADR-0049: Dock-hosted surfaces own stable view wrappers
+- **Date:** 2026-11-16
+- **Status:** Accepted
+- **Context:** WinUI cannot reliably reparent the same widget `UIElement` through recycled `ItemsControl` containers; reordering blanked the content.
+- **Decision:**
+  - `WidgetSurfaceHost` creates one `EmbeddedWidgetSurfaceView` per instance and adds it directly to a dock `StackPanel`.
+  - Reordering moves the wrapper inside the same panel; hiding overflow toggles wrapper visibility.
+  - `IWidgetSurfaceView.SetSurfaceMode(true)` lets compact views drop window chrome.
+- **Consequences:** Reordering/hiding never recreates or reparents the widget content. The host is UI-thread marshalled and is the only owner of surface visuals.
+
+## ADR-0050: Soft dock length cap with overflow surfaces
+- **Date:** 2026-11-16
+- **Status:** Accepted
+- **Context:** Five embedded widgets could consume almost the full screen width.
+- **Decision:**
+  - Cap the dock at 85% of the work-area length.
+  - Add surfaces in presentation order while they fit, hide the remainder and show `+N`.
+  - Reveal a hidden surface by moving it to the front through normalized presentation order.
+- **Consequences:** Icons are never shrunk to illegible sizes and the dock remains usable. Hidden surfaces stay alive/updating; suspend-on-hide is future work.
+
+## ADR-0051: Real vertical dock panels, not clipped horizontal content
+- **Date:** 2026-11-16
+- **Status:** Accepted
+- **Context:** Left/Right docks previously produced a narrow window but kept horizontal icon content, clipping the dock.
+- **Decision:**
+  - Switch outer, pinned, running and embedded panels to vertical orientation for Left/Right.
+  - Invert divider/action margins and item spacing; keep magnification on the Y axis.
+  - Use taller embedded surfaces on vertical docks for readable text.
+- **Consequences:** All four edges render meaningful layouts. Widgets remain compact and the dock thickness stays bounded.
+
+## ADR-0052: Device metrics services own their baselines and caches
+- **Date:** 2026-11-16
+- **Status:** Accepted
+- **Context:** Battery, network and storage values need native/OS access, and network speeds require cumulative deltas.
+- **Decision:**
+  - Add `IBatteryMetrics`, `INetworkMetrics` and `IStorageMetrics` in `OpenBar.SystemBridge`, with Windows sources in Infrastructure.
+  - Cache each service and keep the network baseline per adapter; the first sample reports unavailable speeds.
+  - Use `DriveInfo` for storage and filter virtual/filter network interfaces.
+- **Consequences:** Widgets stay UI-only and share deterministic services. No temperature or per-core metrics are attempted without reliable sources.

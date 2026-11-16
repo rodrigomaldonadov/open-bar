@@ -4,10 +4,15 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using OpenBar.Application.Dock;
 using OpenBar.Dock;
 using OpenBar.Domain.Layouts;
+using OpenBar.Domain.Widgets;
+using OpenBar.Presentation.Widgets;
 using OpenBar.SystemBridge;
+using OpenBar.WidgetRuntime;
 using Windows.Foundation;
 
 namespace OpenBar.Presentation.Dock;
@@ -21,6 +26,7 @@ namespace OpenBar.Presentation.Dock;
 public sealed partial class DockView : UserControl
 {
     private readonly ILogger<DockView> _logger;
+    private readonly IWidgetRuntime? _widgets;
 
     private DockItemViewModel? _dragSource;
     private Point _dragStart;
@@ -30,18 +36,29 @@ public sealed partial class DockView : UserControl
     private Storyboard? _hideStoryboard;
     private Action? _hideCompleted;
 
-    public DockView(DockViewModel viewModel, ILogger<DockView> logger)
+    public DockView(
+        DockViewModel viewModel,
+        WidgetSurfaceHost surfaceHost,
+        ILogger<DockView> logger,
+        IWidgetRuntime? widgets = null)
     {
         ArgumentNullException.ThrowIfNull(viewModel);
+        ArgumentNullException.ThrowIfNull(surfaceHost);
         ArgumentNullException.ThrowIfNull(logger);
 
         ViewModel = viewModel;
+        SurfaceHost = surfaceHost;
+        _widgets = widgets;
         _logger = logger;
         InitializeComponent();
         DataContext = viewModel;
         Loaded += OnLoaded;
         ViewModel.SystemStatusChanged += OnSystemStatusChanged;
+        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+        SurfaceHost.SurfacesChanged += OnSurfacesChanged;
         SystemStatus.SetSnapshot(viewModel.SystemStatus);
+
+        EmbeddedPanel.AddHandler(RightTappedEvent, new RightTappedEventHandler(OnEmbeddedRightTapped), true);
 
         // ListView handles pointer events internally; listen to handled events
         // too so the dock can implement its own reorder gesture.
@@ -55,6 +72,8 @@ public sealed partial class DockView : UserControl
     }
 
     public DockViewModel ViewModel { get; }
+
+    public WidgetSurfaceHost SurfaceHost { get; }
 
     public bool IsInteractionActive => _interactionActive;
 
@@ -138,11 +157,113 @@ public sealed partial class DockView : UserControl
         try
         {
             await ViewModel.InitializeAsync();
+            SurfaceHost.AttachPanel(EmbeddedPanel);
+            ApplyOrientation();
         }
         catch (Exception ex)
         {
             LogError(_logger, "initialize the dock", ex);
         }
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(DockViewModel.Position)
+            or nameof(DockViewModel.IconSize)
+            or nameof(DockViewModel.Spacing)
+            or nameof(DockViewModel.EffectiveAnimationDurationMs))
+        {
+            ApplyOrientation();
+        }
+    }
+
+    private void OnSurfacesChanged(object? sender, EventArgs e)
+    {
+        ApplyOrientation();
+        ViewModel.RefreshItemLayout();
+    }
+
+    private void ApplyOrientation()
+    {
+        var vertical = ViewModel.IsVertical;
+        var orientation = vertical ? Orientation.Vertical : Orientation.Horizontal;
+
+        DockItemsPanel.Orientation = orientation;
+        SetPanelOrientation(PinnedList, orientation);
+        SetPanelOrientation(RunningList, orientation);
+
+
+        RunningDivider.Width = vertical ? 28 : 1;
+        RunningDivider.Height = vertical ? 1 : 28;
+        RunningDivider.Margin = vertical ? new Thickness(8, 8, 8, 8) : new Thickness(8, 0, 8, 0);
+
+        var actionMargin = vertical ? new Thickness(0, 10, 0, 0) : new Thickness(10, 0, 0, 0);
+        AddButton.Margin = actionMargin;
+        SettingsButton.Margin = actionMargin;
+        SystemStatus.Margin = actionMargin;
+
+        ViewModel.RefreshItemLayout();
+        SurfaceHost.ApplyOrientation(vertical, ViewModel.IconSize, Math.Max(0, ViewModel.Spacing));
+    }
+
+    private static void SetPanelOrientation(ItemsControl itemsControl, Orientation orientation)
+    {
+        if (itemsControl.ItemsPanelRoot is StackPanel panel)
+        {
+            panel.Orientation = orientation;
+        }
+    }
+
+    private async void OnEmbeddedRightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if (FindSurface(e.OriginalSource as DependencyObject) is not { } surface)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        var flyout = new MenuFlyout();
+        AddMenuItem(flyout, "Configurar widget…", OpenToolsAsync ?? (() => Task.CompletedTask));
+
+        if (_widgets is not null)
+        {
+            AddMenuItem(
+                flyout,
+                "Mover a ventana independiente",
+                () => _widgets.SetPresentationAsync(
+                    surface.InstanceId,
+                    WidgetPresentationMode.FloatingWindow,
+                    surface.Order));
+
+            flyout.Items.Add(new MenuFlyoutSeparator());
+            AddMenuItem(
+                flyout,
+                "Desactivar widget",
+                () => _widgets.SetEnabledAsync(surface.InstanceId, false));
+            AddMenuItem(
+                flyout,
+                "Quitar del dock",
+                () => _widgets.DeleteAsync(surface.InstanceId));
+        }
+
+        SetInteractionActive(true);
+        flyout.Closed += (_, _) => SetInteractionActive(false);
+        flyout.ShowAt((FrameworkElement)e.OriginalSource, e.GetPosition((UIElement)e.OriginalSource));
+    }
+
+    private static EmbeddedWidgetSurfaceViewModel? FindSurface(DependencyObject? source)
+    {
+        while (source is not null)
+        {
+            if (source is FrameworkElement { DataContext: EmbeddedWidgetSurfaceViewModel surface })
+            {
+                return surface;
+            }
+
+            source = VisualTreeHelper.GetParent(source);
+        }
+
+        return null;
     }
 
     private async void OnItemTapped(object sender, TappedRoutedEventArgs e)
@@ -201,6 +322,58 @@ public sealed partial class DockView : UserControl
     {
         e.Handled = true;
         await OpenToolsSafeAsync();
+    }
+
+    private void OnOverflowClick(object sender, RoutedEventArgs e)
+    {
+        var flyout = new MenuFlyout();
+        var hidden = SurfaceHost.Surfaces.Where(surface => !surface.IsVisible).ToArray();
+
+        foreach (var surface in hidden)
+        {
+            var item = new MenuFlyoutItem { Text = $"Mostrar {surface.Title}" };
+            item.Click += async (_, _) => await ShowOverflowSurfaceAsync(surface);
+            flyout.Items.Add(item);
+        }
+
+        if (hidden.Length > 0)
+        {
+            flyout.Items.Add(new MenuFlyoutSeparator());
+        }
+
+        AddMenuItem(flyout, "Configurar widgets…", OpenToolsAsync ?? (() => Task.CompletedTask));
+        SetInteractionActive(true);
+        flyout.Closed += (_, _) => SetInteractionActive(false);
+        flyout.ShowAt((FrameworkElement)sender, new Point(0, 0));
+    }
+
+    private async Task ShowOverflowSurfaceAsync(EmbeddedWidgetSurfaceViewModel surface)
+    {
+        if (_widgets is null)
+        {
+            return;
+        }
+
+        var ordered = SurfaceHost.Surfaces.ToList();
+        if (!ordered.Remove(surface))
+        {
+            return;
+        }
+
+        ordered.Insert(0, surface);
+
+        await RunAsync(
+            async () =>
+            {
+                for (var index = 0; index < ordered.Count; index++)
+                {
+                    await _widgets.SetPresentationAsync(
+                        ordered[index].InstanceId,
+                        WidgetPresentationMode.DockEmbedded,
+                        index);
+                }
+            },
+            "show the embedded widget");
     }
 
     private void OnSystemStatusChanged(object? sender, SystemMetricsSnapshot snapshot)

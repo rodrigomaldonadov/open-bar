@@ -41,6 +41,16 @@ public interface IWidgetRuntime
     /// </summary>
     Task SetEnabledAsync(Guid instanceId, bool enabled, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Persists the presentation mode/order. A mode change stops the current
+    /// lifecycle and starts a fresh one in the new host; schedules never overlap.
+    /// </summary>
+    Task SetPresentationAsync(
+        Guid instanceId,
+        OpenBar.Domain.Widgets.WidgetPresentationMode presentationMode,
+        int presentationOrder,
+        CancellationToken cancellationToken = default);
+
     Task UpdateSettingsAsync(
         Guid instanceId,
         string settingsJson,

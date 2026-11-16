@@ -13,12 +13,14 @@ internal sealed class RuntimeHarness : IAsyncDisposable
         WidgetRuntimeService runtime,
         WidgetScheduler scheduler,
         InMemoryWidgetInstanceService store,
-        FakeWidgetWindowService windows)
+        FakeWidgetWindowService windows,
+        FakeWidgetSurfaceService surfaces)
     {
         Runtime = runtime;
         _scheduler = scheduler;
         Store = store;
         Windows = windows;
+        Surfaces = surfaces;
     }
 
     public WidgetRuntimeService Runtime { get; }
@@ -26,6 +28,8 @@ internal sealed class RuntimeHarness : IAsyncDisposable
     public InMemoryWidgetInstanceService Store { get; }
 
     public FakeWidgetWindowService Windows { get; }
+
+    public FakeWidgetSurfaceService Surfaces { get; }
 
     public static RuntimeHarness Create(params OpenBar.Widgets.Abstractions.WidgetDefinition[] definitions)
     {
@@ -37,6 +41,7 @@ internal sealed class RuntimeHarness : IAsyncDisposable
 
         var store = new InMemoryWidgetInstanceService();
         var windows = new FakeWidgetWindowService();
+        var surfaces = new FakeWidgetSurfaceService();
         var scheduler = new WidgetScheduler(
             new WidgetSchedulerOptions { MinimumInterval = TimeSpan.FromMilliseconds(10) },
             TimeProvider.System,
@@ -47,9 +52,10 @@ internal sealed class RuntimeHarness : IAsyncDisposable
             registry,
             windows,
             scheduler,
-            NullLogger<WidgetRuntimeService>.Instance);
+            NullLogger<WidgetRuntimeService>.Instance,
+            surfaces: surfaces);
 
-        return new RuntimeHarness(runtime, scheduler, store, windows);
+        return new RuntimeHarness(runtime, scheduler, store, windows, surfaces);
     }
 
     public async ValueTask DisposeAsync()

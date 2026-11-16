@@ -40,6 +40,12 @@ public sealed record WidgetMetadata
     /// <summary>Initial height used when a new instance has no persisted geometry.</summary>
     public double DefaultHeight { get; init; } = 160;
 
+    /// <summary>Preferred dock length when the dock is horizontal, in DIPs.</summary>
+    public double CompactWidth { get; init; } = 160;
+
+    /// <summary>Preferred dock length when the dock is vertical, in DIPs.</summary>
+    public double CompactHeight { get; init; } = 96;
+
     public WidgetCapabilities Capabilities { get; init; } = WidgetCapabilities.None;
 
     /// <summary>When false, the runtime rejects a second persisted instance.</summary>

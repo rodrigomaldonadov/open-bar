@@ -27,6 +27,8 @@ public static class MemoryWidgetDefinition
                 MaxHeight = 320,
                 DefaultWidth = 260,
                 DefaultHeight = 140,
+                CompactWidth = 170,
+                CompactHeight = 96,
                 Capabilities = WidgetCapabilities.Settings | WidgetCapabilities.PeriodicUpdates,
                 AllowsMultipleInstances = true
             },

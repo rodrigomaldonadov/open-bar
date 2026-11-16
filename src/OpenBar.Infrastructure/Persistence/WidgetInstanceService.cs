@@ -154,6 +154,40 @@ public sealed class WidgetInstanceService : IWidgetInstanceService
         return entity;
     }
 
+    public async Task<WidgetInstance> UpdatePresentationAsync(
+        Guid id,
+        WidgetPresentationMode presentationMode,
+        int presentationOrder,
+        CancellationToken cancellationToken = default)
+    {
+        if (id == Guid.Empty)
+        {
+            throw new PersistenceValidationException("A widget instance id is required.");
+        }
+
+        if (presentationOrder < 0)
+        {
+            throw new PersistenceValidationException("The widget presentation order cannot be negative.");
+        }
+
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var entity = await context.WidgetInstances
+            .FirstOrDefaultAsync(instance => instance.Id == id, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (entity is null)
+        {
+            throw new PersistenceNotFoundException("The widget instance does not exist.");
+        }
+
+        entity.PresentationMode = presentationMode;
+        entity.PresentationOrder = presentationOrder;
+        entity.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await SaveAsync(context, "Updating the widget presentation", cancellationToken).ConfigureAwait(false);
+        return entity;
+    }
+
     public async Task<bool> SetEnabledAsync(
         Guid id,
         bool isEnabled,
@@ -264,6 +298,8 @@ public sealed class WidgetInstanceService : IWidgetInstanceService
             WidgetId = source.WidgetId,
             InstanceName = source.InstanceName,
             IsEnabled = source.IsEnabled,
+            PresentationMode = source.PresentationMode,
+            PresentationOrder = source.PresentationOrder,
             PositionX = source.PositionX,
             PositionY = source.PositionY,
             Width = source.Width,
@@ -279,6 +315,8 @@ public sealed class WidgetInstanceService : IWidgetInstanceService
         target.WidgetId = source.WidgetId;
         target.InstanceName = source.InstanceName;
         target.IsEnabled = source.IsEnabled;
+        target.PresentationMode = source.PresentationMode;
+        target.PresentationOrder = source.PresentationOrder;
         target.PositionX = source.PositionX;
         target.PositionY = source.PositionY;
         target.Width = source.Width;

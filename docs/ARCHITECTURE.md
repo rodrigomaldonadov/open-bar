@@ -1,9 +1,9 @@
 # OpenBar — Architecture
 
 ## Status
-- Phase: **Foundation 0.6 (System Bridge & Native Widgets)**
+- Phase: **Foundation 0.7 (Integrated Widget Surfaces & Advanced Widgets)**
 - Date: 2026-11-16
-- Repository state: solution restores, builds and tests cleanly (19 projects); the app runs as a single instance with a tray icon, SQLite persistence, the widget runtime, shared CPU/RAM metrics, official CPU/memory widgets and a polished floating dock with a system status chip, themes, proximity magnification, drag reorder, auto-hide, fullscreen awareness, monitor/DPI handling and a settings window. Integrations, automation and the full Liquid Glass design system remain unimplemented (see `docs/ROADMAP.md`).
+- Repository state: solution restores, builds and tests cleanly (19 projects); the app runs as a single instance with a tray icon, SQLite persistence, the widget runtime, shared CPU/RAM/battery/network/storage metrics, embedded and floating widget presentations, and a polished floating dock with a system status chip, overflow, themes, proximity magnification, drag reorder, auto-hide, fullscreen awareness, monitor/DPI handling and a settings window. Integrations, automation and the full Liquid Glass design system remain unimplemented (see `docs/ROADMAP.md`).
 
 ## Goals
 OpenBar is a native Windows 11 desktop application (dock, widgets, system bridge, integrations, automation) designed for long-term evolution, modularity, low resource usage, and stability.
@@ -246,7 +246,7 @@ Unavailable (persisted instance without a definition)
 ### Remaining visual/runtime limitations
 - Two displays were exercised, including moving the dock to the secondary display; mixed DPI scaling between displays was not validated with a second DPI value.
 - Exclusive fullscreen relies on the shell notification state; a custom-chrome borderless app can be misclassified. Fullscreen was manually verified with Chrome F11, not with a game.
-- Drag/resize/snapping, floating/wide modes and a fully embedded widget surface remain future work; Foundation 0.6 adds a read-only compact status chip without removing independent widget windows.
+- Drag/resize/snapping and floating/wide modes remain future work. Foundation 0.7 implements embedded widget surfaces, overflow and real vertical layouts; the status chip remains as an additional summary.
 
 ## System Bridge and native widgets (Foundation 0.6)
 
@@ -275,18 +275,55 @@ Unavailable (persisted instance without a definition)
 ### Dock surface
 - `SystemStatusView` is a compact chip appended to the dock after the settings action, with two lines (`C 18%`, `M 87%`) and a tooltip. It adapts to the existing theme resources and all four dock orientations through the normal layout path; bottom and left were exercised visually, while geometry tests cover every edge.
 - `DockViewModel` subscribes at 1 s only while the dock is active and disposes the subscription when it hides. The chip opens the settings window when tapped.
-- The chip is deliberately read-only and separate from the independent CPU/memory windows, preserving the Foundation 0.3-0.5 lifecycle and window model. A fully embedded interactive widget surface remains future work.
+- The chip is deliberately read-only. Foundation 0.7 adds separate, interactive embedded widget surfaces while preserving the chip and independent windows.
 
 ### Cost and limitations
 - Measured 562 ms CPU / 10 s and 89.9 MB private with both widgets and the chip; closing the windows reduced it to 125 ms / 10 s. Moving both widgets to 10 s intervals measured 688 ms / 10 s, so WinUI composition dominates and polling is not the cost driver.
 - CPU is system-wide, not per-core. Memory is physical RAM only. Temperature, battery, storage, network and per-process values are not part of Foundation 0.6.
 - A native failure leaves controlled unavailable values; the service does not retry aggressively outside the normal schedule.
 
+## Integrated widget surfaces (Foundation 0.7)
+
+### Presentation model and persistence
+- `WidgetPresentationMode` is persisted per `WidgetInstance` (`FloatingWindow` default, `DockEmbedded`). `PresentationOrder` controls the dock surface order. The `IntegratedWidgetSurfaces` migration adds both columns with safe defaults and a non-negative order check; existing rows keep `FloatingWindow` and their JSON.
+- `IWidgetInstanceService.UpdatePresentationAsync` changes mode/order without touching settings or `IsEnabled`.
+- `WidgetRuntimeService.SetPresentationAsync` is the only presentation transition:
+  1. Persist mode/order and apply the updated entity.
+  2. If the mode changed and the instance is running, stop the widget, await scheduler disposal, and close the current window/surface.
+  3. Start a fresh widget and present it in the new host.
+  4. A mode-only change never leaves two schedules or two views. An order-only change calls the surface host without restarting.
+
+### Host and view ownership
+- `IWidgetSurfaceService` (Application) is the runtime port for embedded surfaces. `WidgetSurfaceHost` (Presentation) implements it on the UI thread and owns one stable `EmbeddedWidgetSurfaceView` per instance.
+- The host creates the view via `IWidget.CreateView()` and adds it once to a dock `StackPanel`. The dock never uses an `ItemsControl` template for widget views, avoiding recycled containers that would reparent and blank a WinUI element when the order changes.
+- Views implement optional `IWidgetSurfaceView.SetSurfaceMode(true)` to remove window-card chrome and use compact typography. `MetricWidgetView` does this for CPU, memory, battery, network and storage.
+- Closing a surface removes its wrapper from the panel; stopping the widget disposes its schedule and view. The persisted row remains for enable/restart/delete.
+- The embedded context menu offers configure, move to independent window, disable and remove. The window host remains unchanged for `FloatingWindow`.
+
+### Layout, orientation and overflow
+- `DockSurfaceMetrics` supplies per-surface length/thickness. `DockLayoutCalculator` adds those to the icon cells and can reserve one overflow cell. It records `Overflow` and clamps to the available length.
+- `DockWindowService` uses a soft cap of 85% of the work area. It adds surfaces in presentation order while they fit, hides the rest, sets `DockViewModel.OverflowCount`, and sizes the dock with visible surfaces only.
+- The overflow `+N` button opens a menu listing hidden surfaces. Choosing one moves it to the front by normalizing presentation order, so the next layout includes it.
+- `DockView.ApplyOrientation` switches the outer panel, pinned/running panels and embedded panel to horizontal or vertical; item margins, divider, action buttons and status chip follow the edge. Magnification uses the X axis for Top/Bottom and Y for Left/Right.
+- Embedded surfaces are 64-96 DIP thick depending on axis and use `CompactWidth`/`CompactHeight` metadata; the dock never shrinks icons to fit.
+
+### Device widgets and shared services
+- Battery: `GetSystemPowerStatus` through `IBatteryMetrics` (`BatteryMetricsService`, 1 s cache). Missing battery returns unavailable.
+- Network: `NetworkInterface` cumulative IP statistics through `INetworkMetrics` (`NetworkMetricsService`, 500 ms cache). The first sample per adapter establishes a baseline and reports `null` speeds; later samples use byte/time deltas. Virtual/filter interfaces are excluded and adapter IDs are persisted per widget.
+- Storage: `DriveInfo` ready volumes through `IStorageMetrics` (`StorageMetricsService`, 2 s cache). No directory traversal. The selected volume ID is persisted.
+- All three services are demand-driven singletons; no timer runs without a widget schedule. `WidgetContext` injects them as nullable-safe Null implementations for isolated tests.
+
+### Cost and limits
+- Measured with five widgets and the chip: **453-688 ms CPU / 10 s**, **74.8-90.8 MB private**. Five floating windows: **703 ms / 10 s**, 104.6 MB. Disabled widgets: **219 ms / 10 s**, 71.4 MB. The 0.6 two-window reference was 562 ms / 89.9 MB.
+- Hidden overflow surfaces remain active and continue updating; suspend-on-hide is future work.
+- Direct drag reorder of surfaces is not implemented; settings and overflow ordering are. Mixed-DPI, game fullscreen, battery-less hardware and monitor-disconnect validation remain BLOCKED.
+
 ## Core subsystems (design intent)
 
 ### Widget system
 - Implemented in Foundation 0.3: contracts, registry/discovery, lifecycle manager, scheduler, persistence recovery and independent WinUI windows (see the **Widget Runtime** section above).
-- Official clock widget lives in `modules/System/OpenBar.Widgets.Clock`; the CPU and memory widgets live in `modules/System/OpenBar.Widgets.System` and share `ISystemMetrics` through `WidgetContext`.
+- Official clock widget lives in `modules/System/OpenBar.Widgets.Clock`; CPU, memory, battery, network and storage widgets live in `modules/System/OpenBar.Widgets.System` and share the System Bridge through `WidgetContext`.
+- Foundation 0.7 adds the presentation host and stable embedded surfaces; independent windows remain supported.
 - Third-party plugins: **isolated out-of-process with IPC** (ALC not treated as a security boundary); not implemented yet.
 
 ### Dock engine
@@ -300,9 +337,10 @@ Unavailable (persisted instance without a definition)
 - No claim of true optical refraction when using blur/composition only.
 
 ### System Bridge
-- Implemented in Foundation 0.6 for CPU and physical memory: shared contracts/service in `OpenBar.SystemBridge`, native source in `OpenBar.Infrastructure/Windows/SystemBridge`, widgets in `modules/System/OpenBar.Widgets.System` and a compact dock chip.
-- Still future: temperature, battery, storage, network, per-process metrics, audio devices and other sensors. Hardware/driver access must degrade gracefully.
-- Shared cache/single-flight and subscription loop avoid duplicate polling; event-driven sources will be added when a concrete consumer needs another metric.
+- Implemented in Foundation 0.6 for CPU and physical memory and extended in 0.7 with battery (`GetSystemPowerStatus`), network cumulative counters (`NetworkInterface`) and storage volumes (`DriveInfo`).
+- Contracts/services live in `OpenBar.SystemBridge`; native/OS sources live in `OpenBar.Infrastructure/Windows/SystemBridge`; widgets consume them through `WidgetContext`.
+- Each service is a cached singleton with no background loop unless a widget schedules a refresh. All values degrade to controlled unavailable snapshots.
+- Still future: temperature, per-core CPU, per-process metrics, audio devices and additional sensors.
 
 ### Integrations Hub
 - Independent connectors (AI, Developer, Productivity, Multimedia/other) using official APIs/OAuth/local-compatible methods only.
@@ -329,4 +367,5 @@ Unavailable (persisted instance without a definition)
 - Foundation 0.4 dock lives in `OpenBar.Domain/Dock` + `OpenBar.Domain/Layouts` (entities), `OpenBar.Application/Dock` + `Persistence` (ports/DTOs), `OpenBar.Dock` (pure geometry, auto-hide, composition, controller), `OpenBar.Infrastructure/Persistence` + `Windows/Dock` (EF, Start Menu, shortcuts, launcher, window enumeration), `OpenBar.Presentation/Dock` (view model, icon loader, controls) and `OpenBar.App` (dock window, tools window, window/DPI/auto-hide host).
 - Foundation 0.5 adds `DockTheme`, the `VisualPolish` migration, proximity magnification (`DockMagnificationCalculator`), theme dictionaries, fade transitions, configurable auto-hide delays, `IFullscreenStateService`/`WindowsFullscreenStateService`, target-display DPI and the expanded settings window. `README.md` and `CHANGELOG.md` document the user-facing state.
 - Foundation 0.6 adds `OpenBar.SystemBridge` (contracts, cache/single-flight service, shared subscriptions), `WindowsSystemMetricsSource` (`GetSystemTimes`, `GlobalMemoryStatusEx`), `modules/System/OpenBar.Widgets.System` (`openbar.cpu`, `openbar.memory`), `WidgetContext.Metrics`, the `SystemStatusView` dock chip and system-widget settings in `DockToolsWindow`. No migration was required.
+- Foundation 0.7 adds `WidgetPresentationMode`/`PresentationOrder` with the `IntegratedWidgetSurfaces` migration, `IWidgetSurfaceService`/`WidgetSurfaceHost`/`EmbeddedWidgetSurfaceView`, `WidgetRuntimeService.SetPresentationAsync`, dock overflow geometry and vertical layout, `IWidgetSurfaceView` compact views, and battery/network/storage contracts, services, sources and widgets.
 - This document will evolve via ADRs in `docs/DECISIONS.md`.

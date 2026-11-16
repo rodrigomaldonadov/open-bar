@@ -14,7 +14,10 @@ public readonly record struct DockRect(int Left, int Top, int Width, int Height)
 public readonly record struct DockPoint(int X, int Y);
 
 /// <summary>Size of the dock bar in device-independent pixels.</summary>
-public readonly record struct DockMetrics(double Width, double Height, int ItemCount);
+public readonly record struct DockMetrics(double Width, double Height, int ItemCount, bool Overflow = false);
+
+/// <summary>Length/thickness required by one embedded widget surface.</summary>
+public readonly record struct DockSurfaceMetrics(double Length, double Thickness);
 
 /// <summary>Pure geometry for the dock; no WinUI or Win32 dependency.</summary>
 public static class DockLayoutCalculator
@@ -26,15 +29,21 @@ public static class DockLayoutCalculator
         int pinnedCount,
         int runningCount,
         bool includeAddTile = true,
-        bool includeSystemStatus = true)
+        bool includeSystemStatus = true,
+        IReadOnlyList<DockSurfaceMetrics>? surfaces = null,
+        double maxLength = 0,
+        bool includeOverflow = false)
     {
         ArgumentNullException.ThrowIfNull(layout);
 
         var iconSize = Math.Clamp(layout.IconSize, 24, 96);
         var spacing = Math.Clamp(layout.Spacing, 0, 40);
+        var surfaceList = surfaces ?? [];
 
         var itemCount = Math.Max(0, pinnedCount) + Math.Max(0, runningCount) + (includeAddTile ? 2 : 0);
         itemCount += includeSystemStatus ? 1 : 0;
+        itemCount += surfaceList.Count;
+        itemCount += includeOverflow ? 1 : 0;
         itemCount = Math.Max(1, itemCount);
 
         var length = itemCount * iconSize + Math.Max(0, itemCount - 1) * spacing + 2 * Padding;
@@ -45,11 +54,30 @@ public static class DockLayoutCalculator
             length += spacing * 2 + 1;
         }
 
+        if (surfaceList.Count > 0)
+        {
+            // Embedded surfaces have independent lengths; add their extra length
+            // on top of the fixed icon cells plus one spacing slot each.
+            length += surfaceList.Sum(surface => Math.Max(0, surface.Length - iconSize) + spacing);
+        }
+
         var thickness = iconSize + 2 * Padding;
+        if (surfaceList.Count > 0)
+        {
+            var widestSurface = surfaceList.Max(surface => surface.Thickness);
+            thickness = Math.Max(thickness, widestSurface + 2 * Padding);
+        }
+
+        var overflow = false;
+        if (maxLength > 0 && length > maxLength)
+        {
+            length = maxLength;
+            overflow = true;
+        }
 
         return layout.Position is DockEdge.Top or DockEdge.Bottom
-            ? new DockMetrics(length, thickness, itemCount)
-            : new DockMetrics(thickness, length, itemCount);
+            ? new DockMetrics(length, thickness, itemCount, overflow)
+            : new DockMetrics(thickness, length, itemCount, overflow);
     }
 
     public static DockRect CalculateBounds(

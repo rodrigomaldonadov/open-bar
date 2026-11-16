@@ -23,6 +23,11 @@ public static class WidgetRuntimeServiceCollectionExtensions
 
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<ISystemMetrics>(NullSystemMetrics.Instance);
+        services.TryAddSingleton<IBatteryMetrics>(NullBatteryMetrics.Instance);
+        services.TryAddSingleton<INetworkMetrics>(NullNetworkMetrics.Instance);
+        services.TryAddSingleton<IStorageMetrics>(NullStorageMetrics.Instance);
+        services.TryAddSingleton<OpenBar.Application.Widgets.IWidgetSurfaceService>(
+            OpenBar.Application.Widgets.NullWidgetSurfaceService.Instance);
         services.AddSingleton(schedulerOptions);
         services.AddSingleton<WidgetScheduler>();
         services.AddSingleton<IWidgetRegistry, WidgetRegistry>();

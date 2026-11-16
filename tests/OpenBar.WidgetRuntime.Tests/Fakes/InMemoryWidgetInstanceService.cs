@@ -96,6 +96,26 @@ internal sealed class InMemoryWidgetInstanceService : OpenBar.Application.Persis
         }
     }
 
+    public Task<OpenBar.Domain.Widgets.WidgetInstance> UpdatePresentationAsync(
+        Guid id,
+        OpenBar.Domain.Widgets.WidgetPresentationMode presentationMode,
+        int presentationOrder,
+        CancellationToken cancellationToken = default)
+    {
+        lock (_sync)
+        {
+            if (!_items.TryGetValue(id, out var instance))
+            {
+                throw new OpenBar.Application.Persistence.PersistenceNotFoundException("The instance does not exist.");
+            }
+
+            instance.PresentationMode = presentationMode;
+            instance.PresentationOrder = presentationOrder;
+            instance.UpdatedAt = DateTimeOffset.UtcNow;
+            return Task.FromResult(Clone(instance));
+        }
+    }
+
     public Task<bool> SetEnabledAsync(Guid id, bool isEnabled, CancellationToken cancellationToken = default)
     {
         lock (_sync)
@@ -177,6 +197,8 @@ internal sealed class InMemoryWidgetInstanceService : OpenBar.Application.Persis
             WidgetId = instance.WidgetId,
             InstanceName = instance.InstanceName,
             IsEnabled = instance.IsEnabled,
+            PresentationMode = instance.PresentationMode,
+            PresentationOrder = instance.PresentationOrder,
             PositionX = instance.PositionX,
             PositionY = instance.PositionY,
             Width = instance.Width,

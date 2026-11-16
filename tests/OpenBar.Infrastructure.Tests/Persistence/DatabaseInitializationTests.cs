@@ -25,7 +25,7 @@ public sealed class DatabaseInitializationTests
 
         await using var context = await database.CreateDbContextAsync();
         Assert.Empty(await context.Database.GetPendingMigrationsAsync());
-        Assert.Equal(3, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(4, (await context.Database.GetAppliedMigrationsAsync()).Count());
     }
 
     [Fact]
@@ -221,7 +221,7 @@ public sealed class DatabaseInitializationTests
         var results = await Task.WhenAll(first.InitializeAsync(), second.InitializeAsync());
 
         Assert.Contains(results, result => result.DatabaseCreated);
-        Assert.Equal(3, results.Sum(result => result.AppliedMigrations.Count));
+        Assert.Equal(4, results.Sum(result => result.AppliedMigrations.Count));
 
         await using var context = await database.CreateDbContextAsync();
         Assert.Empty(await context.Database.GetPendingMigrationsAsync());

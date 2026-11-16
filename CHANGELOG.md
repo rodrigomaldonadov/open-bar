@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.7.0 - Integrated widget surfaces and advanced widgets (2026-11-16)
+
+### Added
+- Per-instance `WidgetPresentationMode` (`DockEmbedded` / `FloatingWindow`) persisted in `WidgetInstances`; existing rows migrate to `FloatingWindow`.
+- `IntegratedWidgetSurfaces` migration with safe defaults and `PresentationOrder`.
+- Dock-owned embedded surfaces with stable view hosting, theme-aware chrome, hover-friendly layout and a context menu (configure, move to window, disable, remove).
+- Live presentation switching without overlapping lifecycles: the current instance is stopped and released before a fresh start in the new host.
+- Ordering through settings and the overflow menu, with optimistic collection/panel reordering that never reparents a widget view through a recycled template.
+- `+N` overflow menu, soft 85% dock-length cap and hidden-surface reveal by moving the selected widget to the front.
+- True vertical dock layout: icons, widget surfaces, divider, actions and magnification adapt to Left/Right edges.
+- Battery widget (`openbar.battery`) using `GetSystemPowerStatus`.
+- Network widget (`openbar.network`) with cumulative byte deltas, first-sample "measuring" state, connectivity and adapter selection.
+- Storage widget (`openbar.storage`) using `DriveInfo` over ready volumes without filesystem scans, plus volume selection.
+- `IBatteryMetrics`, `INetworkMetrics` and `IStorageMetrics` with cached services and `WidgetContext` injection.
+- Widget settings UI for installed instances: add, delete, enable/disable, mode, order, interval, memory unit, network adapter and storage volume.
+
+### Changed
+- `WidgetRuntimeService` owns presentation selection: embedded instances go to the surface host, floating ones to the window host.
+- `WidgetInstanceInfo` exposes presentation mode/order; `IWidgetInstanceService` persists them.
+- Compact metric views implement `IWidgetSurfaceView` and remove their window card chrome when embedded.
+- Dock geometry accounts for per-surface lengths/thicknesses, overflow and all four orientations.
+
+### Verified
+- `dotnet build OpenBar.sln -c Debug` -> 0 warnings, 0 errors (19 projects).
+- `dotnet test OpenBar.sln -c Debug` -> 277 passed, 0 failed, 0 skipped.
+- `dotnet list OpenBar.sln package --vulnerable --include-transitive` -> no vulnerable packages.
+- Existing 0.6 database migrated from 3 to 4 migrations without losing CPU/memory rows or settings.
+- Runtime: CPU and memory embedded, then moved back to floating windows via settings; no duplicate schedules or windows.
+- Runtime: five embedded widgets rendered in the dock; vertical Left layout produced readable surfaces and `+4`/`+1` overflow.
+- Runtime: the clock widget also rendered as a generic embedded surface (compact time/date) and was removed through settings.
+- Runtime: context menu moved a network widget to an independent window; the surface disappeared and the dock shrank.
+- Runtime: disable/enable, add/delete and order up/down persisted in SQLite.
+- Runtime: auto-hide hid the dock and edge reveal restored it; restart recovered all embedded instances, order, overflow and settings.
+- Runtime: battery 96% / connected AC, network Ethernet with real KB/s, storage C: 63% (302.4/476.3 GB), CPU and RAM updating.
+- Performance (5 widgets + chip, embedded): 453-688 ms CPU / 10 s, 74.8-90.8 MB private. Same widgets as floating windows: 703 ms / 10 s, 104.6 MB private. Disabled widgets (chip only): 219 ms / 10 s, 71.4 MB private.
+- Foundation 0.6 baseline: 562 ms / 10 s and 89.9 MB with two floating widgets + chip.
+
+### Known limitations
+- Embedded surfaces are capped and hidden behind `+N`; hidden instances keep updating.
+- Direct pointer drag reorder for embedded surfaces is not implemented; settings/overflow ordering is.
+- Mixed-DPI, exclusive-game fullscreen and monitor-disconnect validation remain BLOCKED.
+- Temperature and per-core CPU are intentionally not implemented.
+
 ## 0.6.0 - System Bridge and native widgets (2026-11-16)
 
 ### Added

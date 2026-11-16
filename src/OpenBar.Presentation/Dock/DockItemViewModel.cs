@@ -82,12 +82,20 @@ public sealed class DockItemViewModel : ObservableObject
         OnPropertyChanged(nameof(IsPinned));
     }
 
-    public void ApplyLayout(double iconSize, double spacing, double magnification, int animationDurationMs, bool isLast)
+    public void ApplyLayout(
+        double iconSize,
+        double spacing,
+        double magnification,
+        int animationDurationMs,
+        bool isLast,
+        bool vertical = false)
     {
         IconSize = iconSize;
         Magnification = magnification;
         AnimationDurationMs = animationDurationMs;
-        ItemMargin = new Thickness(0, 0, isLast ? 0 : spacing, 0);
+        ItemMargin = vertical
+            ? new Thickness(0, 0, 0, isLast ? 0 : spacing)
+            : new Thickness(0, 0, isLast ? 0 : spacing, 0);
         OnPropertyChanged(nameof(ItemMargin));
     }
 

@@ -254,6 +254,14 @@ namespace OpenBar.Infrastructure.Persistence.Migrations
                     b.Property<double?>("PositionY")
                         .HasColumnType("REAL");
 
+                    b.Property<string>("PresentationMode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PresentationOrder")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("SettingsJson")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -286,6 +294,8 @@ namespace OpenBar.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_WidgetInstances_Height", "\"Height\" IS NULL OR \"Height\" > 0");
 
                             t.HasCheckConstraint("CK_WidgetInstances_InstanceName_Length", "length(\"InstanceName\") > 0 AND length(\"InstanceName\") <= 200");
+
+                            t.HasCheckConstraint("CK_WidgetInstances_PresentationOrder", "\"PresentationOrder\" >= 0");
 
                             t.HasCheckConstraint("CK_WidgetInstances_SettingsJson_Valid", "json_valid(\"SettingsJson\")");
 

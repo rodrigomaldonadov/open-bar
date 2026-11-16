@@ -154,4 +154,56 @@ public sealed class DockLayoutCalculatorTests
         Assert.Equal("1", DockMonitorResolver.Select("index:9", monitors)!.Id);
         Assert.Null(DockMonitorResolver.Select("primary", []));
     }
+
+    [Fact]
+    public void EmbeddedSurfacesAddTheirLengthAndThickness()
+    {
+        var surfaces = new[]
+        {
+            new DockSurfaceMetrics(150, 56),
+            new DockSurfaceMetrics(170, 56)
+        };
+
+        var metrics = DockLayoutCalculator.Calculate(
+            Layout(),
+            pinnedCount: 0,
+            runningCount: 0,
+            surfaces: surfaces);
+
+        Assert.Equal(5, metrics.ItemCount);
+        Assert.Equal(548, metrics.Width);
+        Assert.Equal(56 + 24, metrics.Height);
+        Assert.False(metrics.Overflow);
+    }
+
+    [Fact]
+    public void VerticalEmbeddedSurfacesUseHeightAndKeepTheThickness()
+    {
+        var metrics = DockLayoutCalculator.Calculate(
+            Layout(DockEdge.Right),
+            pinnedCount: 1,
+            runningCount: 0,
+            surfaces: [new DockSurfaceMetrics(96, 56)]);
+
+        Assert.Equal(56 + 24, metrics.Width);
+        Assert.True(metrics.Height > 72);
+    }
+
+    [Fact]
+    public void EmbeddedSurfacesRespectTheAvailableLengthAndReportOverflow()
+    {
+        var metrics = DockLayoutCalculator.Calculate(
+            Layout(),
+            pinnedCount: 2,
+            runningCount: 0,
+            surfaces:
+            [
+                new DockSurfaceMetrics(180, 56),
+                new DockSurfaceMetrics(180, 56)
+            ],
+            maxLength: 420);
+
+        Assert.Equal(420, metrics.Width);
+        Assert.True(metrics.Overflow);
+    }
 }

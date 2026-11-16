@@ -36,7 +36,7 @@ public sealed class PersistenceHostTests
 
         await using var context = await database.CreateDbContextAsync();
         Assert.Empty(await context.Database.GetPendingMigrationsAsync());
-        Assert.Equal(3, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(4, (await context.Database.GetAppliedMigrationsAsync()).Count());
 
         await host.StopAsync();
     }
@@ -86,7 +86,7 @@ public sealed class PersistenceHostTests
         await secondHost.StopAsync();
 
         await using var context = await database.CreateDbContextAsync();
-        Assert.Equal(3, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(4, (await context.Database.GetAppliedMigrationsAsync()).Count());
     }
 
     [Fact]

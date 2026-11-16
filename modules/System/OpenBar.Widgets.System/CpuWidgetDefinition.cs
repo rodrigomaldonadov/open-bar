@@ -27,6 +27,8 @@ public static class CpuWidgetDefinition
                 MaxHeight = 320,
                 DefaultWidth = 240,
                 DefaultHeight = 140,
+                CompactWidth = 150,
+                CompactHeight = 96,
                 Capabilities = WidgetCapabilities.Settings | WidgetCapabilities.PeriodicUpdates,
                 AllowsMultipleInstances = true
             },

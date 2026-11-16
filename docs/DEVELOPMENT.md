@@ -23,7 +23,7 @@ Commands are run from the repo root. `Directory.Build.props` defaults `Platform`
 ```powershell
 dotnet restore OpenBar.sln            # SUCCESS (all 19 projects)
 dotnet build OpenBar.sln -c Debug     # SUCCESS: 0 warnings, 0 errors
-dotnet test OpenBar.sln -c Debug      # SUCCESS: 254/254 tests passed, 0 failed
+dotnet test OpenBar.sln -c Debug      # SUCCESS: 277/277 tests passed, 0 failed
 ```
 
 Explicit platform is still supported: `-p:Platform=x64` (default for CLI); `ARM64`/`x86` are declared but not yet validated.
@@ -223,6 +223,40 @@ The runtime reuses `IWidgetInstanceService` from Foundation 0.2. At startup `Wid
 
 > The 10 s interval run measured 688 ms / 10 s, so the two extra WinUI windows dominate cost; polling was not the driver. Mixed-DPI, exclusive-game fullscreen and monitor-disconnect validation remain BLOCKED.
 
+## 2.7 Integrated surfaces workflow (Foundation 0.7)
+
+### Presentation and surface management
+- Open the gear window. **Widgets instalados** lists every persisted instance with its mode (`dock`/`ventana`).
+- Select an instance to edit mode, enabled state, interval, unit/adapter/volume, order and deletion.
+- **Integrar en el dock** changes the mode; the runtime stops the old host, disposes its schedule, closes the window/surface and starts one fresh widget in the new host. **Ventana independiente** reverses it.
+- Right-click an embedded surface for configure, move to window, disable and remove. The dock `+N` button lists hidden surfaces and moves the selected one to the front.
+- Order changes do not restart the widget; they persist `PresentationOrder` and reorder the existing stable wrapper.
+
+### Space, orientation and lifecycle
+- The dock caps its length at 85% of the work area and hides surplus surfaces behind `+N`; icons are never shrunk.
+- Left/Right edges switch the real panels to vertical; this affects icons, surfaces, dividers and magnification.
+- A widget has exactly one `IWidget`/scheduler scope. Mode changes use stop-then-start; no two schedules overlap. Closing the app stops all widgets and surfaces.
+- Battery uses `GetSystemPowerStatus`, network uses cumulative `NetworkInterface` counters (first sample has no speed), storage uses `DriveInfo`.
+
+### Runtime evidence (2026-11-16)
+| Check | Observed result |
+|---|---|
+| Embedded CPU/RAM | Both rendered in the dock; their windows disappeared |
+| Mode switch | Embedded -> floating opened a window, closed the surface and shrank the dock |
+| Context menu | Configure, move, disable and remove were present; move worked |
+| Settings | Add/delete, enable/disable, order up/down, adapter/volume and interval persisted |
+| Overflow | 5 surfaces produced `+1`; reveal moved the hidden widget to the front |
+| Generic surface | Clock widget embedded with compact time/date and deleted cleanly |
+| Vertical | Left dock `150x841`, readable network surface, `+4` overflow; Bottom restored |
+| Auto-hide | Dock hid and edge reveal restored it |
+| Restart | All embedded instances, order, mode, overflow and settings recovered |
+| Battery/network/storage | 96% AC, Ethernet KB/s, C: 63% (302.4/476.3 GB) |
+| Windows source comparison | `Win32_Battery` 96%/AC; `Get-Volume C` 511.4 GB / 186.7 GB free = 476.3/173.9 GiB; `Get-NetAdapterStatistics` showed live Ethernet deltas |
+| DB migration | 0.6 database migrated from 3 to 4 migrations; rows/JSON preserved |
+| Performance | Embedded 453-688 ms/10 s, 74.8-90.8 MB; floating 703 ms, 104.6 MB; disabled 219 ms |
+
+> Hidden overflow surfaces continue updating. Direct drag reorder of surfaces is not implemented; use settings/overflow. Mixed-DPI, game fullscreen and monitor-disconnect remain BLOCKED.
+
 ## 3. Fixes applied during validation
 
 1. **Broken solution file for CLI restore**
@@ -295,17 +329,18 @@ Do not create unnecessary files, duplicate implementations, or use fake/placehol
 - Widgets communicate via contracts/events; faulty widget must not crash app.
 - No plaintext credentials; use Credential Manager/DPAPI.
 
-## 6. Remaining work after Foundation 0.6
-Verified in this stage: toolchain, restore/build/tests, single-instance startup, tray integration, controlled shutdown, SQLite/EF Core persistence, widget runtime, a polished dock with themes, proximity magnification, drag reorder, four edges, auto-hide, fullscreen awareness, monitor/DPI selection, settings, restart persistence, shared CPU/RAM System Bridge, CPU/memory widgets and the dock status chip. Still **not implemented** (do not mark complete):
+## 6. Remaining work after Foundation 0.7
+Verified in this stage: toolchain, restore/build/tests, single-instance startup, tray integration, controlled shutdown, SQLite/EF Core persistence, widget runtime, a polished dock with themes, proximity magnification, drag reorder, four real orientations, auto-hide, fullscreen awareness, monitor/DPI selection, settings, restart persistence, shared CPU/RAM/battery/network/storage metrics, embedded/floating widget presentations, overflow, and CPU/memory/battery/network/storage widgets. Still **not implemented** (do not mark complete):
 1. Mixed-DPI validation across two displays and per-monitor dock layouts.
 2. Dock drag/resize/snapping, floating/wide modes and fullscreen auto-hide tuning for games.
-3. Full MSIX/AUMID application discovery beyond Start Menu shortcuts and explicit paths.
-4. Additional System Bridge sources (battery, storage, network, temperature) and per-core/per-process metrics.
-5. Windows autostart (explicitly out of scope for this phase).
-6. Final brand artwork and the complete Liquid Glass design system.
-7. Credential Manager/DPAPI secret store for integrations (only the "no secrets in SQLite" policy exists).
-8. Out-of-process third-party plugin host and IPC (ALC is not a security boundary).
-9. Automated UI tests for WinUI surfaces; visual interactions remain manually validated.
+3. Direct drag reorder for embedded surfaces and suspend/resume for hidden overflow.
+4. Full MSIX/AUMID application discovery beyond Start Menu shortcuts and explicit paths.
+5. Per-core CPU, per-process metrics, temperature and other sensor sources where reliable.
+6. Windows autostart (explicitly out of scope for this phase).
+7. Final brand artwork and the complete Liquid Glass design system.
+8. Credential Manager/DPAPI secret store for integrations (only the "no secrets in SQLite" policy exists).
+9. Out-of-process third-party plugin host and IPC (ALC is not a security boundary).
+10. Automated UI tests for WinUI surfaces; visual interactions remain manually validated.
 
 ## 7. Single-instance IPC contract (current)
 - Names: `Local\<appId>.SingleInstance.<userSID>` (mutex) and `<appId>.SingleInstance.<userSID>` (pipe), `appId` ASCII alphanumeric.

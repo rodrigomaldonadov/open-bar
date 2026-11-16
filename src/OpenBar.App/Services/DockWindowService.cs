@@ -10,6 +10,7 @@ using OpenBar.Application.Windows;
 using OpenBar.Dock;
 using OpenBar.Domain.Layouts;
 using OpenBar.Presentation.Dock;
+using OpenBar.Presentation.Widgets;
 using Windows.Graphics;
 using WinRT.Interop;
 
@@ -37,6 +38,7 @@ public sealed partial class DockWindowService : IWindowManagementService, IDispo
     private readonly IApplicationLifecycle _lifecycle;
     private readonly DockAutoHideController _autoHide;
     private readonly IFullscreenStateService _fullscreen;
+    private readonly WidgetSurfaceHost _surfaces;
     private readonly ILogger<DockWindowService> _logger;
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly DispatcherQueueTimer _autoHideTimer;
@@ -64,18 +66,21 @@ public sealed partial class DockWindowService : IWindowManagementService, IDispo
         IApplicationLifecycle lifecycle,
         DockAutoHideController autoHide,
         IFullscreenStateService fullscreen,
+        WidgetSurfaceHost surfaces,
         ILogger<DockWindowService> logger)
     {
         ArgumentNullException.ThrowIfNull(window);
         ArgumentNullException.ThrowIfNull(viewModel);
         ArgumentNullException.ThrowIfNull(autoHide);
         ArgumentNullException.ThrowIfNull(fullscreen);
+        ArgumentNullException.ThrowIfNull(surfaces);
 
         _window = window;
         _viewModel = viewModel;
         _lifecycle = lifecycle;
         _autoHide = autoHide;
         _fullscreen = fullscreen;
+        _surfaces = surfaces;
         _logger = logger;
         _windowHandle = WindowNative.GetWindowHandle(window);
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
@@ -96,6 +101,7 @@ public sealed partial class DockWindowService : IWindowManagementService, IDispo
         _window.AppWindow.Changed += OnWindowChanged;
         _viewModel.LayoutChanged += OnLayoutChanged;
         _window.DockView.InteractionStateChanged += OnDockInteractionChanged;
+        _surfaces.SurfacesChanged += OnSurfacesChanged;
         _autoHide.Enabled = _viewModel.AutoHide;
 
         TryStartDisplayWatcher();
@@ -270,12 +276,58 @@ public sealed partial class DockWindowService : IWindowManagementService, IDispo
             Offset = _viewModel.Offset
         };
 
+        var vertical = layout.Position is DockEdge.Left or DockEdge.Right;
+        var scale = GetDpiScale(display);
+        var workLength = (vertical ? work.Height : work.Width) / scale;
+        var availableLength = workLength
+            - Math.Max(0, _viewModel.Offset) * 2
+            - 8;
+        var softLimit = workLength * 0.85 - 8;
+
+        var allSurfaces = _surfaces.Surfaces
+            .Select(surface => vertical
+                ? new DockSurfaceMetrics(surface.CompactHeight, Math.Max(_viewModel.IconSize, 96))
+                : new DockSurfaceMetrics(surface.CompactWidth, Math.Max(_viewModel.IconSize, 72)))
+            .ToArray();
+
+        var visibleSurfaces = new List<DockSurfaceMetrics>();
+        var hiddenSurfaces = 0;
+
+        for (var index = 0; index < allSurfaces.Length; index++)
+        {
+            var candidate = new List<DockSurfaceMetrics>(visibleSurfaces) { allSurfaces[index] };
+            var probe = DockLayoutCalculator.Calculate(
+                layout,
+                _viewModel.PinnedCount,
+                _viewModel.RunningCount,
+                surfaces: candidate);
+            var probeLength = vertical ? probe.Height : probe.Width;
+            var reserveForOverflow = index < allSurfaces.Length - 1
+                ? _viewModel.IconSize + Math.Max(0, _viewModel.Spacing)
+                : 0;
+
+            if (probeLength + reserveForOverflow <= Math.Min(availableLength, softLimit))
+            {
+                visibleSurfaces.Add(allSurfaces[index]);
+            }
+            else
+            {
+                hiddenSurfaces = allSurfaces.Length - index;
+                break;
+            }
+        }
+
+        _surfaces.SetVisibleCount(visibleSurfaces.Count);
+        _viewModel.SetOverflow(hiddenSurfaces);
+
         var metrics = DockLayoutCalculator.Calculate(
             layout,
             _viewModel.PinnedCount,
-            _viewModel.RunningCount);
+            _viewModel.RunningCount,
+            surfaces: visibleSurfaces,
+            maxLength: Math.Min(availableLength, softLimit),
+            includeOverflow: hiddenSurfaces > 0);
 
-        var scale = GetDpiScale(display);
         _dockBounds = DockLayoutCalculator.CalculateBounds(layout, metrics, _workArea, scale);
 
         _autoHide.Enabled = _viewModel.AutoHide;
@@ -462,6 +514,8 @@ public sealed partial class DockWindowService : IWindowManagementService, IDispo
     }
 
     private void OnLayoutChanged(object? sender, EventArgs e) => ApplyLayout();
+
+    private void OnSurfacesChanged(object? sender, EventArgs e) => ApplyLayout();
 
     private void OnDockInteractionChanged(object? sender, EventArgs e)
     {
@@ -697,6 +751,7 @@ public sealed partial class DockWindowService : IWindowManagementService, IDispo
             _window.AppWindow.Changed -= OnWindowChanged;
             _viewModel.LayoutChanged -= OnLayoutChanged;
             _window.DockView.InteractionStateChanged -= OnDockInteractionChanged;
+            _surfaces.SurfacesChanged -= OnSurfacesChanged;
         }
         catch (Exception ex)
         {

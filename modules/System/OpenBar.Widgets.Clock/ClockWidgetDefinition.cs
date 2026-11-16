@@ -29,6 +29,8 @@ public static class ClockWidgetDefinition
                 MaxHeight = 360,
                 DefaultWidth = 260,
                 DefaultHeight = 150,
+                CompactWidth = 160,
+                CompactHeight = 96,
                 Capabilities = WidgetCapabilities.Settings | WidgetCapabilities.PeriodicUpdates,
                 AllowsMultipleInstances = true
             },

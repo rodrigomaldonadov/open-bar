@@ -29,6 +29,13 @@ public interface IWidgetInstanceService
         int settingsSchemaVersion,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Persists how the instance is presented and its dock order.</summary>
+    Task<WidgetInstance> UpdatePresentationAsync(
+        Guid id,
+        WidgetPresentationMode presentationMode,
+        int presentationOrder,
+        CancellationToken cancellationToken = default);
+
     Task<bool> SetEnabledAsync(Guid id, bool isEnabled, CancellationToken cancellationToken = default);
 
     /// <summary>Inserts or updates several instances inside one transaction.</summary>
