@@ -339,11 +339,19 @@ public sealed partial class DockController : IDockController, IDisposable
         layout.Magnification = Math.Clamp(layout.Magnification, 1, 1.5);
         layout.MaterialOpacity = Math.Clamp(layout.MaterialOpacity, 0.05, 1);
         layout.AnimationDurationMs = Math.Clamp(layout.AnimationDurationMs, 0, 1_000);
+        layout.CornerRadius = Math.Clamp(layout.CornerRadius, 0, 48);
+        layout.AutoHideShowDelayMs = Math.Clamp(layout.AutoHideShowDelayMs, 0, 2_000);
+        layout.AutoHideHideDelayMs = Math.Clamp(layout.AutoHideHideDelayMs, 0, 5_000);
         layout.Offset = Math.Max(0, layout.Offset);
         layout.Size = layout.IconSize + 2 * DockLayoutCalculator.Padding;
         layout.MonitorTarget = string.IsNullOrWhiteSpace(layout.MonitorTarget)
             ? DockLayout.PrimaryMonitorTarget
             : layout.MonitorTarget.Trim();
+
+        if (!Enum.IsDefined(layout.Theme))
+        {
+            layout.Theme = DockTheme.System;
+        }
     }
 
     private void RaiseChanged()

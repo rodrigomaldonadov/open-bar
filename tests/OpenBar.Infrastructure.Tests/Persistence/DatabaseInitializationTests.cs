@@ -25,7 +25,7 @@ public sealed class DatabaseInitializationTests
 
         await using var context = await database.CreateDbContextAsync();
         Assert.Empty(await context.Database.GetPendingMigrationsAsync());
-        Assert.Equal(2, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(3, (await context.Database.GetAppliedMigrationsAsync()).Count());
     }
 
     [Fact]
@@ -94,6 +94,12 @@ public sealed class DatabaseInitializationTests
         Assert.Contains("Magnification", layoutColumns);
         Assert.Contains("MaterialOpacity", layoutColumns);
         Assert.Contains("AnimationDurationMs", layoutColumns);
+        Assert.Contains("CornerRadius", layoutColumns);
+        Assert.Contains("Theme", layoutColumns);
+        Assert.Contains("AutoHideShowDelayMs", layoutColumns);
+        Assert.Contains("AutoHideHideDelayMs", layoutColumns);
+        Assert.Contains("ReduceAnimations", layoutColumns);
+        Assert.Contains("HideInFullscreen", layoutColumns);
 
         var pinnedColumns = await QueryStringsAsync(connection, "PRAGMA table_info(\"PinnedApplications\");", column: 1);
         Assert.Contains("Id", pinnedColumns);
@@ -215,7 +221,7 @@ public sealed class DatabaseInitializationTests
         var results = await Task.WhenAll(first.InitializeAsync(), second.InitializeAsync());
 
         Assert.Contains(results, result => result.DatabaseCreated);
-        Assert.Equal(2, results.Sum(result => result.AppliedMigrations.Count));
+        Assert.Equal(3, results.Sum(result => result.AppliedMigrations.Count));
 
         await using var context = await database.CreateDbContextAsync();
         Assert.Empty(await context.Database.GetPendingMigrationsAsync());

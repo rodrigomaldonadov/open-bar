@@ -42,6 +42,24 @@ public sealed class DockLayout
     /// <summary>Animation duration in milliseconds.</summary>
     public int AnimationDurationMs { get; set; } = 180;
 
+    /// <summary>Dock corner radius in device-independent pixels.</summary>
+    public double CornerRadius { get; set; } = 22;
+
+    /// <summary>Light, dark or follow the system theme.</summary>
+    public DockTheme Theme { get; set; } = DockTheme.System;
+
+    /// <summary>Dwell time at the activation edge before showing, in milliseconds.</summary>
+    public int AutoHideShowDelayMs { get; set; } = 150;
+
+    /// <summary>Delay after leaving the dock before hiding, in milliseconds.</summary>
+    public int AutoHideHideDelayMs { get; set; } = 550;
+
+    /// <summary>Force short/instant animations regardless of the configured duration.</summary>
+    public bool ReduceAnimations { get; set; }
+
+    /// <summary>Hide the dock while a fullscreen application is in the foreground.</summary>
+    public bool HideInFullscreen { get; set; } = true;
+
     public bool AutoHide { get; set; }
 
     /// <summary>At most one layout is the default (enforced by a filtered unique index).</summary>

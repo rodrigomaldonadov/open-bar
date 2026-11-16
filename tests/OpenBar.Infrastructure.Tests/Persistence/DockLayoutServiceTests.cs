@@ -22,7 +22,18 @@ public sealed class DockLayoutServiceTests
             Offset = 12,
             AutoHide = true,
             IsDefault = true,
-            MonitorTarget = "index:1"
+            MonitorTarget = "index:1",
+            IconSize = 56,
+            Spacing = 12,
+            Magnification = 1.2,
+            MaterialOpacity = 0.6,
+            AnimationDurationMs = 220,
+            CornerRadius = 28,
+            Theme = DockTheme.Dark,
+            AutoHideShowDelayMs = 200,
+            AutoHideHideDelayMs = 700,
+            ReduceAnimations = true,
+            HideInFullscreen = false
         });
 
         Assert.NotEqual(Guid.Empty, created.Id);
@@ -38,6 +49,17 @@ public sealed class DockLayoutServiceTests
         Assert.True(reloaded.AutoHide);
         Assert.True(reloaded.IsDefault);
         Assert.Equal("index:1", reloaded.MonitorTarget);
+        Assert.Equal(56, reloaded.IconSize);
+        Assert.Equal(12, reloaded.Spacing);
+        Assert.Equal(1.2, reloaded.Magnification);
+        Assert.Equal(0.6, reloaded.MaterialOpacity);
+        Assert.Equal(220, reloaded.AnimationDurationMs);
+        Assert.Equal(28, reloaded.CornerRadius);
+        Assert.Equal(DockTheme.Dark, reloaded.Theme);
+        Assert.Equal(200, reloaded.AutoHideShowDelayMs);
+        Assert.Equal(700, reloaded.AutoHideHideDelayMs);
+        Assert.True(reloaded.ReduceAnimations);
+        Assert.False(reloaded.HideInFullscreen);
     }
 
     [Fact]

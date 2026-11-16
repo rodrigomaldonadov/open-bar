@@ -205,6 +205,12 @@ public sealed class DockControllerTests
         layout.MaterialOpacity = 9;
         layout.AnimationDurationMs = 9_999;
         layout.AutoHide = true;
+        layout.CornerRadius = 999;
+        layout.AutoHideShowDelayMs = -1;
+        layout.AutoHideHideDelayMs = 99_999;
+        layout.Theme = (DockTheme)99;
+        layout.ReduceAnimations = true;
+        layout.HideInFullscreen = false;
 
         await context.Controller.UpdateLayoutAsync(layout);
 
@@ -214,6 +220,12 @@ public sealed class DockControllerTests
         Assert.Equal(1, context.Controller.Layout.MaterialOpacity);
         Assert.Equal(1_000, context.Controller.Layout.AnimationDurationMs);
         Assert.True(context.Controller.Layout.AutoHide);
+        Assert.Equal(48, context.Controller.Layout.CornerRadius);
+        Assert.Equal(0, context.Controller.Layout.AutoHideShowDelayMs);
+        Assert.Equal(5_000, context.Controller.Layout.AutoHideHideDelayMs);
+        Assert.Equal(DockTheme.System, context.Controller.Layout.Theme);
+        Assert.True(context.Controller.Layout.ReduceAnimations);
+        Assert.False(context.Controller.Layout.HideInFullscreen);
         Assert.Equal(96 + 24, context.Controller.Layout.Size);
     }
 

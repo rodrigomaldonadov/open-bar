@@ -17,8 +17,11 @@ public enum AutoHideAction
 public sealed class DockAutoHideController
 {
     private DateTimeOffset? _outsideSince;
+    private DateTimeOffset? _edgeSince;
 
     public bool Enabled { get; set; }
+
+    public TimeSpan ShowDelay { get; set; } = TimeSpan.FromMilliseconds(150);
 
     public TimeSpan HideDelay { get; set; } = TimeSpan.FromMilliseconds(550);
 
@@ -36,6 +39,7 @@ public sealed class DockAutoHideController
         if (!Enabled)
         {
             _outsideSince = null;
+            _edgeSince = null;
 
             if (IsHidden)
             {
@@ -48,15 +52,26 @@ public sealed class DockAutoHideController
 
         if (IsHidden)
         {
-            if (IsAtActivationEdge(workArea, edge, cursor))
+            if (!IsAtActivationEdge(workArea, edge, cursor))
             {
-                IsHidden = false;
-                _outsideSince = null;
-                return AutoHideAction.Show;
+                _edgeSince = null;
+                return AutoHideAction.None;
             }
 
-            return AutoHideAction.None;
+            _edgeSince ??= now;
+
+            if (now - _edgeSince.Value < ShowDelay)
+            {
+                return AutoHideAction.None;
+            }
+
+            IsHidden = false;
+            _edgeSince = null;
+            _outsideSince = null;
+            return AutoHideAction.Show;
         }
+
+        _edgeSince = null;
 
         if (IsInside(dockBounds, cursor, 8))
         {
@@ -80,6 +95,7 @@ public sealed class DockAutoHideController
     {
         IsHidden = hidden;
         _outsideSince = null;
+        _edgeSince = null;
     }
 
     private bool IsAtActivationEdge(DockRect workArea, DockEdge edge, DockPoint cursor)

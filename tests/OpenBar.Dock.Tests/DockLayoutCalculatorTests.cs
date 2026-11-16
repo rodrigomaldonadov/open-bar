@@ -17,6 +17,19 @@ public sealed class DockLayoutCalculatorTests
     }
 
     [Fact]
+    public void DefaultsIncludeTheVisualPolishFields()
+    {
+        var layout = DockLayoutDefaults.Create();
+
+        Assert.Equal(DockTheme.System, layout.Theme);
+        Assert.Equal(22, layout.CornerRadius);
+        Assert.Equal(150, layout.AutoHideShowDelayMs);
+        Assert.Equal(550, layout.AutoHideHideDelayMs);
+        Assert.True(layout.HideInFullscreen);
+        Assert.False(layout.ReduceAnimations);
+    }
+
+    [Fact]
     public void HorizontalDockSizeIncludesItemsSpacingAndAddTile()
     {
         var metrics = DockLayoutCalculator.Calculate(Layout(), pinnedCount: 2, runningCount: 0);

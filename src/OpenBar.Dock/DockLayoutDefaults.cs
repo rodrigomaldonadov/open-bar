@@ -18,6 +18,12 @@ public static class DockLayoutDefaults
             Magnification = 1.12,
             MaterialOpacity = 0.55,
             AnimationDurationMs = 180,
+            CornerRadius = 22,
+            Theme = DockTheme.System,
+            AutoHideShowDelayMs = 150,
+            AutoHideHideDelayMs = 550,
+            ReduceAnimations = false,
+            HideInFullscreen = true,
             AutoHide = false,
             IsDefault = true,
             MonitorTarget = DockLayout.PrimaryMonitorTarget

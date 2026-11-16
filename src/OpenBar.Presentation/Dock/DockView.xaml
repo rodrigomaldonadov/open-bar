@@ -6,61 +6,104 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:dock="using:OpenBar.Presentation.Dock"
-    mc:Ignorable="d">
+    mc:Ignorable="d"
+    RequestedTheme="{x:Bind ViewModel.ThemeElement, Mode=OneWay}">
     <UserControl.Resources>
-        <dock:BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Default">
+                    <LinearGradientBrush x:Key="DockShellGradientBrush" StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#33FFFFFF" Offset="0" />
+                        <GradientStop Color="#12FFFFFF" Offset="0.55" />
+                        <GradientStop Color="#08FFFFFF" Offset="1" />
+                    </LinearGradientBrush>
+                    <SolidColorBrush x:Key="DockBorderBrush" Color="#4DFFFFFF" />
+                    <SolidColorBrush x:Key="DockTintBrush" Color="#26000000" />
+                    <SolidColorBrush x:Key="DockActionBackgroundBrush" Color="#1AFFFFFF" />
+                    <SolidColorBrush x:Key="DockActionForegroundBrush" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="DockDividerBrush" Color="#40FFFFFF" />
+                    <SolidColorBrush x:Key="DockHintBrush" Color="#CCFFFFFF" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <LinearGradientBrush x:Key="DockShellGradientBrush" StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#33FFFFFF" Offset="0" />
+                        <GradientStop Color="#12FFFFFF" Offset="0.55" />
+                        <GradientStop Color="#08FFFFFF" Offset="1" />
+                    </LinearGradientBrush>
+                    <SolidColorBrush x:Key="DockBorderBrush" Color="#4DFFFFFF" />
+                    <SolidColorBrush x:Key="DockTintBrush" Color="#26000000" />
+                    <SolidColorBrush x:Key="DockActionBackgroundBrush" Color="#1AFFFFFF" />
+                    <SolidColorBrush x:Key="DockActionForegroundBrush" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="DockDividerBrush" Color="#40FFFFFF" />
+                    <SolidColorBrush x:Key="DockHintBrush" Color="#CCFFFFFF" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <LinearGradientBrush x:Key="DockShellGradientBrush" StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#B8FFFFFF" Offset="0" />
+                        <GradientStop Color="#7AFFFFFF" Offset="0.55" />
+                        <GradientStop Color="#4DFFFFFF" Offset="1" />
+                    </LinearGradientBrush>
+                    <SolidColorBrush x:Key="DockBorderBrush" Color="#33000000" />
+                    <SolidColorBrush x:Key="DockTintBrush" Color="#0DFFFFFF" />
+                    <SolidColorBrush x:Key="DockActionBackgroundBrush" Color="#16000000" />
+                    <SolidColorBrush x:Key="DockActionForegroundBrush" Color="#E0000000" />
+                    <SolidColorBrush x:Key="DockDividerBrush" Color="#33000000" />
+                    <SolidColorBrush x:Key="DockHintBrush" Color="#AA000000" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
 
-        <Style x:Key="DockListViewItemStyle" TargetType="ListViewItem">
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="Margin" Value="0" />
-            <Setter Property="MinWidth" Value="0" />
-            <Setter Property="MinHeight" Value="0" />
-            <Setter Property="HorizontalContentAlignment" Value="Center" />
-            <Setter Property="VerticalContentAlignment" Value="Center" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="UseSystemFocusVisuals" Value="False" />
-        </Style>
+            <dock:BooleanToVisibilityConverter x:Key="BoolToVisibility" />
 
-        <Style x:Key="DockActionButtonStyle" TargetType="Button">
-            <Setter Property="Background" Value="#1AFFFFFF" />
-            <Setter Property="Foreground" Value="White" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="CornerRadius" Value="12" />
-            <Setter Property="Width" Value="48" />
-            <Setter Property="Height" Value="48" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="HorizontalContentAlignment" Value="Center" />
-            <Setter Property="VerticalContentAlignment" Value="Center" />
-            <Setter Property="UseSystemFocusVisuals" Value="False" />
-        </Style>
+            <Style x:Key="DockListViewItemStyle" TargetType="ListViewItem">
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Margin" Value="0" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="UseSystemFocusVisuals" Value="False" />
+            </Style>
+
+            <Style x:Key="DockActionButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="{ThemeResource DockActionBackgroundBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource DockActionForegroundBrush}" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="CornerRadius" Value="12" />
+                <Setter Property="Width" Value="48" />
+                <Setter Property="Height" Value="48" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="UseSystemFocusVisuals" Value="False" />
+            </Style>
+        </ResourceDictionary>
     </UserControl.Resources>
 
     <Grid Background="Transparent">
         <Border
             x:Name="DockShell"
-            CornerRadius="22"
+            CornerRadius="{x:Bind ViewModel.CornerRadiusValue, Mode=OneWay}"
             BorderThickness="1"
-            BorderBrush="#4DFFFFFF"
+            BorderBrush="{ThemeResource DockBorderBrush}"
             Padding="10"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"
+            Background="{ThemeResource DockShellGradientBrush}"
+            RenderTransformOrigin="0.5,0.5"
             Translation="0,0,24">
             <Border.Shadow>
                 <ThemeShadow />
             </Border.Shadow>
-            <Border.Background>
-                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                    <GradientStop Color="#33FFFFFF" Offset="0" />
-                    <GradientStop Color="#12FFFFFF" Offset="0.55" />
-                    <GradientStop Color="#08FFFFFF" Offset="1" />
-                </LinearGradientBrush>
-            </Border.Background>
+            <Border.RenderTransform>
+                <CompositeTransform x:Name="ShellTransform" />
+            </Border.RenderTransform>
 
             <Grid>
                 <Border
                     x:Name="GlassTint"
-                    CornerRadius="22"
-                    Background="#26000000"
+                    CornerRadius="{x:Bind ViewModel.CornerRadiusValue, Mode=OneWay}"
+                    Background="{ThemeResource DockTintBrush}"
                     Opacity="{x:Bind ViewModel.MaterialOpacity, Mode=OneWay}"
                     IsHitTestVisible="False" />
 
@@ -117,7 +160,7 @@
                         Width="1"
                         Height="28"
                         Margin="8,0"
-                        Background="#40FFFFFF"
+                        Background="{ThemeResource DockDividerBrush}"
                         Visibility="{x:Bind ViewModel.HasRunningItems, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
 
                     <ItemsControl
@@ -154,7 +197,7 @@
                     x:Name="EmptyHint"
                     Text="Añadir"
                     FontSize="12"
-                    Foreground="#CCFFFFFF"
+                    Foreground="{ThemeResource DockHintBrush}"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
                     IsHitTestVisible="False"

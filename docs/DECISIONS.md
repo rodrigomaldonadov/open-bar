@@ -40,7 +40,7 @@
 - **Status:** **Verified (closed 2026-11-16)** — .NET 10 SDK installed
 - **Context:** Requested stack specifies C# 14, .NET 10 LTS, WinUI 3, Windows App SDK 2.6.5, Windows SDK 26100. Initial revalidation found only SDK 11.0.100 (no 10.x) with `global.json` pinning 10.0.100, which blocked restore. Later the same day, SDK **10.0.404** was installed alongside 11.0.100; `global.json` (`rollForward: latestFeature`) resolved to 10.0.404.
 - **Decision:** Keep target framework on .NET 10 and the `global.json` intent; do not retarget to .NET 11. Verified the stack by actual restore/build/test/run instead of assumptions.
-- **Consequences:** `dotnet restore`, `build` (0 warnings, 0 errors), `test` (4/4 at that Foundation 0.1 snapshot; **114/114 after Foundation 0.2; 186/186 after Foundation 0.3; 230/230 after Foundation 0.4**) and app launch all succeeded on SDK 10.0.404 with Windows App SDK 2.6.5. Remaining Foundation 0.1 work is feature work, not environment work.
+- **Consequences:** `dotnet restore`, `build` (0 warnings, 0 errors), `test` (4/4 at that Foundation 0.1 snapshot; **114/114 after Foundation 0.2; 186/186 after Foundation 0.3; 230/230 after Foundation 0.4; 238/238 after Foundation 0.5**) and app launch all succeeded on SDK 10.0.404 with Windows App SDK 2.6.5. Remaining Foundation 0.1 work is feature work, not environment work.
 
 ## ADR-0007: CLI builds default to x64; use a canonical, restorable solution file
 - **Date:** 2026-11-16
@@ -347,3 +347,64 @@
   - Evict failed/null entries and retry when an item without an icon is refreshed; use a neutral symbol only as the last fallback.
   - For shortcuts, prefer the resolved executable thumbnail when it is not a shell host; never download icons.
 - **Consequences:** Real icons render at usable DPI, transient failures recover, and no external network dependency is introduced.
+
+## ADR-0038: Theme dictionaries and honest Acrylic materials
+- **Date:** 2026-11-16
+- **Status:** Accepted
+- **Context:** The dock must look coherent in light and dark Windows themes without claiming optical effects WinUI does not provide.
+- **Decision:**
+  - Keep `DesktopAcrylicBackdrop` as the real blur material and layer an XAML gradient/border/tint above it.
+  - Store `Theme` (`System`/`Light`/`Dark`) and `CornerRadius` in `DockLayout`; apply `ElementTheme` on the dock root and use `ThemeDictionaries` for shell, border, tint, action, hover, fallback and running-dot brushes.
+  - Expose the radius through a bound `CornerRadius` value; keep DWM round corners as a window-level fallback.
+  - Describe the result as blur/tint/reflections, never as refraction.
+- **Consequences:** The dock adapts to both themes without a second visual tree. Acrylic availability still depends on Windows composition and falls back to a solid window background.
+
+## ADR-0039: Proximity magnification with fixed layout cells
+- **Date:** 2026-11-16
+- **Status:** Accepted
+- **Context:** A single hover scale is not dock-like and can make neighbours jump or move the dock.
+- **Decision:**
+  - Keep each item's layout cell fixed and animate only a render transform.
+  - `DockMagnificationCalculator` receives item centers along the dock axis, the cursor position, icon size, spacing and maximum magnification. It applies a smoothstep falloff within a radius based on icon+spacing.
+  - `DockView` measures the rendered item centers on pointer movement and drives every `DockItemControl`; the same code handles horizontal and vertical docks.
+- **Consequences:** Neighbours react proportionally to the real cursor and the dock geometry never changes during hover. Cost is bounded to a small visual-tree walk while the pointer is over the dock.
+
+## ADR-0040: Fullscreen detection with an explicit unknown state
+- **Date:** 2026-11-16
+- **Status:** Accepted
+- **Context:** The dock must not appear over exclusive or borderless fullscreen apps. A maximized window is not necessarily fullscreen, and the dock becoming foreground can hide the fullscreen window from a naive foreground-only check.
+- **Decision:**
+  - Treat `SHQueryUserNotificationState` D3D/presentation states as exclusive fullscreen.
+  - Treat a foreground window that covers the entire monitor and has no caption as borderless fullscreen; maximized windows (work-area only or captioned) are not.
+  - If the foreground belongs to OpenBar, return `FullscreenKind.Unknown`; `DockWindowService` keeps the previous state instead of assuming normal mode. The dock is hidden on a positive fullscreen result and restored only after the state clears.
+- **Consequences:** Chrome F11 and shell fullscreen states work; custom-chrome borderless apps can be misclassified. Games were not launched for validation, so that path is documented as partially verified.
+
+## ADR-0041: Separate auto-hide show/hide delays and interaction suppression
+- **Date:** 2026-11-16
+- **Status:** Accepted
+- **Context:** A single hide delay is not enough to tune reveal behavior, and menus/settings disappearing under the cursor is a usability bug.
+- **Decision:**
+  - Persist `AutoHideShowDelayMs` and `AutoHideHideDelayMs`; the state machine uses a dwell timer at the activation edge and a separate leave timer for hiding.
+  - `DockView` raises `InteractionStateChanged` for context menus; the App suppresses auto-hide while the tools window is open. Both reset the delay when interaction begins.
+  - Polling runs at 120 ms only while auto-hide is enabled; no timer remains active otherwise.
+- **Consequences:** Reveal/hide timing is configurable and stable, with no flicker loops. A very small activation edge remains resolution-dependent by nature.
+
+## ADR-0042: Use the target display's DPI and persist a logical monitor selector
+- **Date:** 2026-11-16
+- **Status:** Accepted
+- **Context:** Using the current window DPI while moving to another monitor produces wrong sizes/positions; a physical monitor id is unstable across reconnections.
+- **Decision:**
+  - Persist `primary`/`index:N` and resolve it against `DisplayArea.FindAll()` with a primary fallback.
+  - Compute geometry from the target display's work area and DPI via `MonitorFromPoint` + `GetDpiForMonitor`, falling back to `GetDpiForWindow`.
+  - Re-apply on `DisplayAreaWatcher.Updated`.
+- **Consequences:** Two displays were exercised successfully (primary ↔ secondary). Mixed DPI between displays still needs hardware validation.
+
+## ADR-0043: Respect Windows reduced-motion and expose an explicit override
+- **Date:** 2026-11-16
+- **Status:** Accepted
+- **Context:** Animations must not ignore accessibility preferences.
+- **Decision:**
+  - Read `UISettings.AnimationsEnabled` and observe `AnimationsEnabledChanged`.
+  - Persist a `ReduceAnimations` override. The effective duration is zero when either the system preference is off or the override is enabled.
+  - The same effective duration drives item magnification and dock fade/scale transitions.
+- **Consequences:** Motion can be reduced without changing layout; the override is visible in settings and testable through the persisted field.

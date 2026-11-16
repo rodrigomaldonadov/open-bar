@@ -37,6 +37,18 @@ internal sealed class DockLayoutConfiguration : IEntityTypeConfiguration<DockLay
                     "CK_DockLayouts_AnimationDuration",
                     "\"AnimationDurationMs\" >= 0 AND \"AnimationDurationMs\" <= 2000");
                 table.HasCheckConstraint(
+                    "CK_DockLayouts_CornerRadius",
+                    "\"CornerRadius\" >= 0 AND \"CornerRadius\" <= 48");
+                table.HasCheckConstraint(
+                    "CK_DockLayouts_AutoHideShowDelay",
+                    "\"AutoHideShowDelayMs\" >= 0 AND \"AutoHideShowDelayMs\" <= 2000");
+                table.HasCheckConstraint(
+                    "CK_DockLayouts_AutoHideHideDelay",
+                    "\"AutoHideHideDelayMs\" >= 0 AND \"AutoHideHideDelayMs\" <= 5000");
+                table.HasCheckConstraint(
+                    "CK_DockLayouts_Theme",
+                    "\"Theme\" IN ('System', 'Light', 'Dark')");
+                table.HasCheckConstraint(
                     "CK_DockLayouts_MonitorTarget_Length",
                     "length(\"MonitorTarget\") > 0 AND length(\"MonitorTarget\") <= 100");
             });
@@ -76,6 +88,26 @@ internal sealed class DockLayoutConfiguration : IEntityTypeConfiguration<DockLay
             .IsRequired();
 
         builder.Property(layout => layout.AnimationDurationMs)
+            .IsRequired();
+
+        builder.Property(layout => layout.CornerRadius)
+            .IsRequired();
+
+        builder.Property(layout => layout.Theme)
+            .HasConversion<string>()
+            .HasMaxLength(16)
+            .IsRequired();
+
+        builder.Property(layout => layout.AutoHideShowDelayMs)
+            .IsRequired();
+
+        builder.Property(layout => layout.AutoHideHideDelayMs)
+            .IsRequired();
+
+        builder.Property(layout => layout.ReduceAnimations)
+            .IsRequired();
+
+        builder.Property(layout => layout.HideInFullscreen)
             .IsRequired();
 
         builder.Property(layout => layout.AutoHide)

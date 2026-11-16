@@ -256,7 +256,12 @@ public partial class App : Microsoft.UI.Xaml.Application
                 host.Services.GetRequiredService<DockViewModel>(),
                 host.Services.GetRequiredService<IWidgetRuntime>());
 
-            _dockTools.Closed += (_, _) => _dockTools = null;
+            _windowService?.SetInteractionSuppressed(true);
+            _dockTools.Closed += (_, _) =>
+            {
+                _dockTools = null;
+                _windowService?.SetInteractionSuppressed(false);
+            };
         }
 
         _dockTools.Activate();

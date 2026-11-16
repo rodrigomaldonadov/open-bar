@@ -8,7 +8,26 @@
     xmlns:dock="using:OpenBar.Presentation.Dock"
     mc:Ignorable="d">
     <UserControl.Resources>
-        <dock:BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Default">
+                    <SolidColorBrush x:Key="DockItemHoverBrush" Color="#26FFFFFF" />
+                    <SolidColorBrush x:Key="DockRunningDotBrush" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="DockFallbackGlyphBrush" Color="#B3FFFFFF" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="DockItemHoverBrush" Color="#26FFFFFF" />
+                    <SolidColorBrush x:Key="DockRunningDotBrush" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="DockFallbackGlyphBrush" Color="#B3FFFFFF" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="DockItemHoverBrush" Color="#1F000000" />
+                    <SolidColorBrush x:Key="DockRunningDotBrush" Color="#E0000000" />
+                    <SolidColorBrush x:Key="DockFallbackGlyphBrush" Color="#99000000" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+            <dock:BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+        </ResourceDictionary>
     </UserControl.Resources>
 
     <Grid
@@ -18,9 +37,7 @@
         Background="Transparent"
         RenderTransformOrigin="0.5,0.5"
         ToolTipService.ToolTip="{Binding DisplayName}"
-        AutomationProperties.Name="{Binding DisplayName}"
-        PointerEntered="OnPointerEntered"
-        PointerExited="OnPointerExited">
+        AutomationProperties.Name="{Binding DisplayName}">
         <Grid.RenderTransform>
             <ScaleTransform x:Name="HoverScale" ScaleX="1" ScaleY="1" />
         </Grid.RenderTransform>
@@ -28,12 +45,13 @@
         <Border
             x:Name="HoverBackground"
             CornerRadius="12"
-            Background="#26FFFFFF"
+            Background="{ThemeResource DockItemHoverBrush}"
             Opacity="0" />
 
         <FontIcon
             Glyph="&#xE8A5;"
             FontSize="28"
+            Foreground="{ThemeResource DockFallbackGlyphBrush}"
             Opacity="0.55"
             HorizontalAlignment="Center"
             VerticalAlignment="Center" />
@@ -46,7 +64,7 @@
         <Ellipse
             Width="5"
             Height="5"
-            Fill="White"
+            Fill="{ThemeResource DockRunningDotBrush}"
             Opacity="0.9"
             HorizontalAlignment="Center"
             VerticalAlignment="Bottom"

@@ -1,9 +1,9 @@
 # OpenBar — Architecture
 
 ## Status
-- Phase: **Foundation 0.4 (Dock UI & Desktop Experience)**
+- Phase: **Foundation 0.5 (Visual Polish & Desktop Experience)**
 - Date: 2026-11-16
-- Repository state: solution restores, builds and tests cleanly (17 projects); the app runs as a single instance with a tray icon, SQLite persistence, the widget runtime and a real floating dock with pinned/running applications, real shell icons, drag reorder, four-edge positioning, auto-hide and a separate settings window. Integrations, automation and the final Liquid Glass design system remain unimplemented (see `docs/ROADMAP.md`).
+- Repository state: solution restores, builds and tests cleanly (17 projects); the app runs as a single instance with a tray icon, SQLite persistence, the widget runtime and a polished floating dock with themes, proximity magnification, drag reorder, auto-hide, fullscreen awareness, monitor/DPI handling and a settings window. Integrations, automation and the full Liquid Glass design system remain unimplemented (see `docs/ROADMAP.md`).
 
 ## Goals
 OpenBar is a native Windows 11 desktop application (dock, widgets, system bridge, integrations, automation) designed for long-term evolution, modularity, low resource usage, and stability.
@@ -232,6 +232,22 @@ Unavailable (persisted instance without a definition)
 - Single-monitor behavior, DPI scaling, all four edges and auto-hide were verified manually. Multi-monitor topology changes are implemented through `DisplayAreaWatcher` but could not be exercised with a second physical display.
 - The tray menu opens and its commands are unchanged, but native menu items are not exposed to UI Automation; the exit command was not selected programmatically. Graceful shutdown is covered by host/runtime tests.
 
+### Visual polish (Foundation 0.5)
+- `DockLayout` now persists `Theme` (System/Light/Dark), `CornerRadius`, `AutoHideShowDelayMs`, `AutoHideHideDelayMs`, `ReduceAnimations` and `HideInFullscreen`; the `VisualPolish` migration adds them with safe defaults.
+- `DockView` and `DockItemControl` use theme dictionaries for the shell gradient, border, tint, action buttons, hover highlight, fallback glyph and running dot. `RequestedTheme` follows the selected mode; Windows Acrylic remains the backdrop.
+- Appearance and hide/show transitions use a short opacity + scale storyboard on the dock shell. `UISettings.AnimationsEnabled` is observed; the explicit reduced-motion setting overrides the configured duration.
+- `DockMagnificationCalculator` computes a smooth proximity falloff around the cursor axis. `DockView` measures item centers and drives every `DockItemControl`; the layout cell never changes, so the dock does not move or jitter.
+- Auto-hide separates show dwell and hide delay. The host pauses auto-hide while a context menu or the tools window is open.
+- `WindowsFullscreenStateService` reports exclusive fullscreen from `SHQueryUserNotificationState` and a conservative borderless-fullscreen heuristic (foreground window covers the whole monitor and has no caption). `DockWindowService` hides the dock and restores it when fullscreen ends. A foreground owned by OpenBar reports `Unknown`, preserving the previous state so showing the dock cannot mask a still-fullscreen app.
+- `DockWindowService` computes DPI from the target display (`GetDpiForMonitor`), not just the window's current monitor, and the `DisplayAreaWatcher` re-applies geometry when displays/DPI change.
+- Settings expose theme, position, monitor, icon size, spacing, magnification, material opacity, corner radius, animation duration, auto-hide, show/hide delays, reduced motion and fullscreen behavior. The tools window uses the native theme rather than a hardcoded palette.
+- Performance in the verified idle state: about 156 ms CPU per 10 s and 86 MB private memory while visible with auto-hide off; running-window enumeration stays at 2 s and only while visible, fullscreen polling is 450 ms, and auto-hide polling (120 ms) only runs when enabled.
+
+### Remaining visual/runtime limitations
+- Two displays were exercised, including moving the dock to the secondary display; mixed DPI scaling between displays was not validated with a second DPI value.
+- Exclusive fullscreen relies on the shell notification state; a custom-chrome borderless app can be misclassified. Fullscreen was manually verified with Chrome F11, not with a game.
+- Drag/resize/snapping, floating/wide modes, dock-integrated widget surfaces and the final brand/design system remain future work.
+
 ## Core subsystems (design intent)
 
 ### Widget system
@@ -277,4 +293,5 @@ Unavailable (persisted instance without a definition)
 - Foundation 0.2 persistence lives in `OpenBar.Domain` (entities/enums), `OpenBar.Application/Persistence` + `OpenBar.Application/Startup` (ports, exceptions, key policy, cache, startup journal) and `OpenBar.Infrastructure/Persistence` (DbContext, configurations, migrations, initializer, services, hosted service, DI extension). `App.OnLaunched` calls `AddOpenBarPersistence()` before any other hosted service.
 - Foundation 0.3 widget runtime lives in `OpenBar.Widgets.Abstractions` (contracts), `OpenBar.WidgetRuntime` (registry, discovery, lifecycle, scheduler, hosted service, DI), `OpenBar.Application/Widgets` (window port) and `OpenBar.App` (`WidgetWindowService`, `WidgetWindow`, dock controls). The clock module lives in `modules/System/OpenBar.Widgets.Clock`.
 - Foundation 0.4 dock lives in `OpenBar.Domain/Dock` + `OpenBar.Domain/Layouts` (entities), `OpenBar.Application/Dock` + `Persistence` (ports/DTOs), `OpenBar.Dock` (pure geometry, auto-hide, composition, controller), `OpenBar.Infrastructure/Persistence` + `Windows/Dock` (EF, Start Menu, shortcuts, launcher, window enumeration), `OpenBar.Presentation/Dock` (view model, icon loader, controls) and `OpenBar.App` (dock window, tools window, window/DPI/auto-hide host).
+- Foundation 0.5 adds `DockTheme`, the `VisualPolish` migration, proximity magnification (`DockMagnificationCalculator`), theme dictionaries, fade transitions, configurable auto-hide delays, `IFullscreenStateService`/`WindowsFullscreenStateService`, target-display DPI and the expanded settings window. `README.md` and `CHANGELOG.md` document the user-facing state.
 - This document will evolve via ADRs in `docs/DECISIONS.md`.

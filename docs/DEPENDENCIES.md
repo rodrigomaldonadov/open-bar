@@ -18,7 +18,7 @@
 | SQLite native | `SQLitePCLRaw.bundle_e_sqlite3` **2.1.14** (direct in Infrastructure) | **VERIFIED** — resolves GHSA-2m69-gcr7-jv3q / NU1903; vulnerability scan clean. |
 | Hardware | `LibreHardwareMonitorLib` **0.9.4** | **PARTIAL** — restores, not used/tested yet (sensor access is hardware/driver dependent). |
 | HTTP resilience | `Microsoft.Extensions.Http.Resilience` **10.0.0** | **VERIFIED** — restores/builds; no connectors yet. |
-| Testing | xUnit 2.9.2, runner 2.8.2, Test SDK 17.12.0, coverlet 6.0.2 | **VERIFIED** — **230/230 tests passed** across 6 projects (Domain 2, Application 47, Infrastructure 74, Dock 35, WidgetRuntime 71, Integration 1); persistence uses real temp SQLite files, widget/dock tests use deterministic fakes for windows/time. |
+| Testing | xUnit 2.9.2, runner 2.8.2, Test SDK 17.12.0, coverlet 6.0.2 | **VERIFIED** — **238/238 tests passed** across 6 projects (Domain 2, Application 47, Infrastructure 74, Dock 43, WidgetRuntime 71, Integration 1); persistence uses real temp SQLite files, dock/widget tests use deterministic fakes. |
 
 ## Package/version policy
 - Verify compatibility with **.NET 10** and the Windows App SDK in use before adding/upgrading dependencies.
@@ -32,7 +32,7 @@
 dotnet --list-sdks                  -> 10.0.404, 11.0.100
 dotnet restore OpenBar.sln                   -> success, 0 warnings (17 projects)
 dotnet build OpenBar.sln -c Debug            -> 0 warnings, 0 errors
-dotnet test OpenBar.sln -c Debug             -> 230 passed, 0 failed, 0 skipped
+dotnet test OpenBar.sln -c Debug             -> 238 passed, 0 failed, 0 skipped
 dotnet list OpenBar.sln package --vulnerable --include-transitive -> no vulnerable packages
 dotnet tool restore                          -> dotnet-ef 10.0.0 restored
 dotnet ef migrations list --project src/OpenBar.Infrastructure --startup-project tools/OpenBar.DesignTime
@@ -55,7 +55,9 @@ dotnet ef migrations list --project src/OpenBar.Infrastructure --startup-project
 - `OpenBar.WidgetRuntime.Tests` uses the existing xUnit/Test SDK/coverlet versions and the real SQLite provider (`Microsoft.Data.Sqlite`) for persistence tests.
 - The solution grew from 14 to **17 projects**: the `OpenBar.Widgets.Clock` module, the `OpenBar.WidgetRuntime.Tests` project and the `OpenBar.Dock.Tests` project. All three are in `OpenBar.sln`; the tooling-only `tools/OpenBar.DesignTime` remains outside it.
 - Foundation 0.4 adds **no new third-party package**. `OpenBar.Dock` was reduced to a plain class library (Application reference + existing DI/logging packages) so dock geometry/lifecycle stay testable without WinUI. `OpenBar.Presentation` adds only the already-centralized `Microsoft.Extensions.Logging.Abstractions`; icon loading uses `Windows.Storage`/`StorageItemThumbnail` from the Windows App SDK projection.
+- Foundation 0.5 adds **no new package** either. Light/dark resources, proximity magnification, fullscreen detection and the `VisualPolish` migration use the existing Windows App SDK, `Windows.UI.ViewManagement`, Win32 shell APIs and EF Core stack. The theme/fullscreen/DPI work does not add a dependency.
 - `dotnet list OpenBar.sln package --vulnerable --include-transitive` reports no vulnerable packages for any of the 17 projects.
+- The migration sequence is now `InitialPersistence` → `DockUi` → `VisualPolish`; the last one adds theme, corner radius, auto-hide delays, reduced-motion and fullscreen columns with safe defaults.
 
 ## Notable dependency findings
 

@@ -1,10 +1,8 @@
-using Microsoft.UI;
 using Microsoft.UI.Text;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 using OpenBar.Application.Dock;
 using OpenBar.Domain.Dock;
 using OpenBar.Domain.Layouts;
@@ -12,7 +10,6 @@ using OpenBar.Presentation.Dock;
 using OpenBar.WidgetRuntime;
 using OpenBar.Widgets.Clock;
 using Windows.Graphics;
-using Windows.UI;
 
 namespace OpenBar.App;
 
@@ -27,12 +24,19 @@ public sealed partial class DockToolsWindow : Window
     private readonly ListView _applications;
     private readonly TextBox _pathBox;
     private readonly ComboBox _position;
+    private readonly ComboBox _theme;
+    private readonly ComboBox _monitor;
     private readonly Slider _iconSize;
     private readonly Slider _spacing;
     private readonly Slider _magnification;
     private readonly Slider _opacity;
+    private readonly Slider _cornerRadius;
     private readonly Slider _animation;
+    private readonly Slider _showDelay;
+    private readonly Slider _hideDelay;
     private readonly ToggleSwitch _autoHide;
+    private readonly ToggleSwitch _reduceAnimations;
+    private readonly ToggleSwitch _hideInFullscreen;
     private readonly TextBlock _status;
 
     public DockToolsWindow(DockViewModel viewModel, IWidgetRuntime widgets)
@@ -48,32 +52,51 @@ public sealed partial class DockToolsWindow : Window
 
         _applications = new ListView
         {
-            Height = 240,
+            Height = 220,
             SelectionMode = ListViewSelectionMode.Single,
             DisplayMemberPath = nameof(DiscoveredApplication.Name),
-            Background = new SolidColorBrush(Color.FromArgb(255, 38, 41, 49)),
             CornerRadius = new CornerRadius(10)
         };
+        AutomationProperties.SetAutomationId(_applications, "ApplicationList");
 
         _position = new ComboBox { MinWidth = 220 };
-        AutomationProperties.SetAutomationId(_position, "DockPosition");        foreach (var edge in Enum.GetValues<DockEdge>())
+        AutomationProperties.SetAutomationId(_position, "DockPosition");
+        foreach (var edge in Enum.GetValues<DockEdge>())
         {
             _position.Items.Add(new ComboBoxItem { Content = EdgeLabel(edge), Tag = edge });
         }
 
         _position.SelectedIndex = (int)_viewModel.Position;
 
+        _theme = new ComboBox { MinWidth = 220 };
+        AutomationProperties.SetAutomationId(_theme, "DockTheme");
+        _theme.Items.Add(new ComboBoxItem { Content = "Automático (Windows)", Tag = DockTheme.System });
+        _theme.Items.Add(new ComboBoxItem { Content = "Claro", Tag = DockTheme.Light });
+        _theme.Items.Add(new ComboBoxItem { Content = "Oscuro", Tag = DockTheme.Dark });
+        _theme.SelectedIndex = (int)_viewModel.Theme;
+
+        _monitor = new ComboBox { MinWidth = 260 };
+        AutomationProperties.SetAutomationId(_monitor, "DockMonitor");
+        LoadMonitors();
+
         _iconSize = CreateSlider("Tamaño de icono", 24, 96, 4, _viewModel.IconSize);
         _spacing = CreateSlider("Espaciado", 0, 40, 1, _viewModel.Spacing);
-        _magnification = CreateSlider("Ampliación al pasar el cursor", 1, 1.5, 0.02, _viewModel.Magnification);
+        _magnification = CreateSlider("Ampliación máxima al pasar el cursor", 1, 1.5, 0.02, _viewModel.Magnification);
         _opacity = CreateSlider("Intensidad del material", 0.05, 1, 0.05, _viewModel.MaterialOpacity);
+        _cornerRadius = CreateSlider("Radio de las esquinas", 0, 48, 1, _viewModel.CornerRadius);
         _animation = CreateSlider("Duración de animaciones (ms)", 0, 1000, 20, _viewModel.AnimationDurationMs);
+        _showDelay = CreateSlider("Retardo de aparición del auto-hide (ms)", 0, 2000, 50, _viewModel.AutoHideShowDelayMs);
+        _hideDelay = CreateSlider("Retardo de ocultación del auto-hide (ms)", 0, 5000, 50, _viewModel.AutoHideHideDelayMs);
+
         _autoHide = new ToggleSwitch { Header = "Ocultar automáticamente", IsOn = _viewModel.AutoHide };
-        _status = new TextBlock
+        _reduceAnimations = new ToggleSwitch { Header = "Reducir animaciones", IsOn = _viewModel.ReduceAnimations };
+        _hideInFullscreen = new ToggleSwitch
         {
-            Foreground = new SolidColorBrush(Color.FromArgb(210, 255, 255, 255)),
-            TextWrapping = TextWrapping.Wrap
+            Header = "Ocultar durante aplicaciones a pantalla completa",
+            IsOn = _viewModel.HideInFullscreen
         };
+
+        _status = new TextBlock { TextWrapping = TextWrapping.Wrap };
 
         var addButton = new Button { Content = "Añadir seleccionada" };
         addButton.Click += async (_, _) => await AddSelectedAsync();
@@ -105,7 +128,7 @@ public sealed partial class DockToolsWindow : Window
         var panel = new StackPanel
         {
             Spacing = 12,
-            Width = 580,
+            Width = 600,
             HorizontalAlignment = HorizontalAlignment.Left
         };
 
@@ -120,15 +143,26 @@ public sealed partial class DockToolsWindow : Window
         panel.Children.Add(addButton);
         panel.Children.Add(_pathBox);
         panel.Children.Add(addPathButton);
+
         panel.Children.Add(Header("Apariencia"));
+        panel.Children.Add(_theme);
         panel.Children.Add(_position);
+        panel.Children.Add(_monitor);
         panel.Children.Add(_iconSize);
         panel.Children.Add(_spacing);
         panel.Children.Add(_magnification);
         panel.Children.Add(_opacity);
+        panel.Children.Add(_cornerRadius);
         panel.Children.Add(_animation);
+
+        panel.Children.Add(Header("Comportamiento"));
         panel.Children.Add(_autoHide);
+        panel.Children.Add(_showDelay);
+        panel.Children.Add(_hideDelay);
+        panel.Children.Add(_reduceAnimations);
+        panel.Children.Add(_hideInFullscreen);
         panel.Children.Add(saveButton);
+
         panel.Children.Add(Header("Widgets"));
         panel.Children.Add(clockButton);
         panel.Children.Add(closeButton);
@@ -144,18 +178,42 @@ public sealed partial class DockToolsWindow : Window
         Content = new Grid
         {
             Padding = new Thickness(24),
-            Background = new SolidColorBrush(Color.FromArgb(255, 25, 27, 33)),
             Children = { scroll }
         };
 
-        AppWindow.Resize(new SizeInt32(660, 780));
+        AppWindow.Resize(new SizeInt32(700, 900));
 
         var workArea = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
         AppWindow.Move(new PointInt32(
-            workArea.X + (workArea.Width - 660) / 2,
-            workArea.Y + (workArea.Height - 780) / 2));
+            workArea.X + Math.Max(0, (workArea.Width - 700) / 2),
+            workArea.Y + Math.Max(0, (workArea.Height - 900) / 2)));
 
         _ = LoadApplicationsAsync();
+    }
+
+    private void LoadMonitors()
+    {
+        var displays = DisplayArea.FindAll();
+        var selectedIndex = 0;
+
+        for (var index = 0; index < displays.Count; index++)
+        {
+            var display = displays[index];
+            var target = display.IsPrimary ? DockLayout.PrimaryMonitorTarget : $"index:{index}";
+            var label = display.IsPrimary
+                ? "Principal"
+                : $"Pantalla {index + 1} ({display.WorkArea.Width}×{display.WorkArea.Height})";
+
+            var item = new ComboBoxItem { Content = label, Tag = target };
+            _monitor.Items.Add(item);
+
+            if (_viewModel.MonitorTarget.Equals(target, StringComparison.OrdinalIgnoreCase))
+            {
+                selectedIndex = index;
+            }
+        }
+
+        _monitor.SelectedIndex = _monitor.Items.Count == 0 ? -1 : selectedIndex;
     }
 
     private async Task LoadApplicationsAsync()
@@ -223,6 +281,12 @@ public sealed partial class DockToolsWindow : Window
         var edge = _position.SelectedItem is ComboBoxItem { Tag: DockEdge selected }
             ? selected
             : _viewModel.Position;
+        var theme = _theme.SelectedItem is ComboBoxItem { Tag: DockTheme selectedTheme }
+            ? selectedTheme
+            : _viewModel.Theme;
+        var monitor = _monitor.SelectedItem is ComboBoxItem { Tag: string selectedMonitor }
+            ? selectedMonitor
+            : _viewModel.MonitorTarget;
 
         try
         {
@@ -233,7 +297,14 @@ public sealed partial class DockToolsWindow : Window
                 _magnification.Value,
                 _opacity.Value,
                 (int)Math.Round(_animation.Value),
-                _autoHide.IsOn);
+                _autoHide.IsOn,
+                theme,
+                _cornerRadius.Value,
+                (int)Math.Round(_showDelay.Value),
+                (int)Math.Round(_hideDelay.Value),
+                _reduceAnimations.IsOn,
+                _hideInFullscreen.IsOn,
+                monitor);
 
             _status.Text = "Configuración guardada.";
         }
@@ -262,7 +333,6 @@ public sealed partial class DockToolsWindow : Window
             Text = text,
             FontSize = 18,
             FontWeight = FontWeights.SemiBold,
-            Foreground = new SolidColorBrush(Colors.White),
             Margin = new Thickness(0, 8, 0, 0)
         };
 

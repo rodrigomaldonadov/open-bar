@@ -23,7 +23,7 @@ Commands are run from the repo root. `Directory.Build.props` defaults `Platform`
 ```powershell
 dotnet restore OpenBar.sln            # SUCCESS (all 17 projects)
 dotnet build OpenBar.sln -c Debug     # SUCCESS: 0 warnings, 0 errors
-dotnet test OpenBar.sln -c Debug      # SUCCESS: 230/230 tests passed, 0 failed
+dotnet test OpenBar.sln -c Debug      # SUCCESS: 238/238 tests passed, 0 failed
 ```
 
 Explicit platform is still supported: `-p:Platform=x64` (default for CLI); `ARM64`/`x86` are declared but not yet validated.
@@ -162,6 +162,38 @@ The runtime reuses `IWidgetInstanceService` from Foundation 0.2. At startup `Wid
 
 > The native tray context menu opens, but its items are not exposed to UI Automation; the `Salir de OpenBar` item could not be selected programmatically. Graceful shutdown is covered by `PersistenceHostTests`/`WidgetRuntimeHostTests`; the dock/tray behavior itself was verified manually and in Foundation 0.1.2.
 
+## 2.5 Visual polish workflow (Foundation 0.5)
+
+### Appearance and behavior
+- Open the gear window. **Apariencia** controls theme (Automático/Claro/Oscuro), edge, monitor, icon size, spacing, maximum magnification, material intensity, corner radius and animation duration.
+- **Comportamiento** controls auto-hide, show delay, hide delay, reduced motion and fullscreen hiding. All values persist in the default `DockLayout`.
+- Light/dark themes use theme dictionaries for the glass gradient, border, tint, buttons, hover highlight and running dot. Acrylic remains the native backdrop; no optical refraction is claimed.
+- Hover magnification is proximity-based: the cursor scales the hovered icon and its neighbours on the dock axis, while every layout cell keeps its size so the dock does not jump.
+- Show/hide uses a short opacity/scale transition. Windows `AnimationsEnabled` is observed; the explicit reduced-motion setting forces instant transitions.
+
+### Auto-hide and fullscreen
+- Auto-hide uses a 120 ms cursor poll only when enabled, with independent show/hide delays and a 4 px activation edge. Context menus and the settings window pause it.
+- Fullscreen detection reports shell D3D/presentation state and a conservative borderless window (full monitor, no caption). Chrome F11 was used for manual validation; exclusive games were not launched.
+- When the dock itself owns the foreground, the detector returns `Unknown` and keeps the previous state, preventing the dock from appearing over an app that is still fullscreen behind it.
+
+### Monitors and DPI
+- The settings window lists `DisplayArea` monitors; `primary`/`index:N` is persisted. DPI is obtained from the target display with `GetDpiForMonitor`; `DisplayAreaWatcher` re-applies geometry on topology changes.
+- Verified with two displays: the dock moved to the second display and back. Mixed-DPI scaling between the displays was not exercised.
+
+### Runtime evidence (2026-11-16)
+| Check | Observed result |
+|---|---|
+| Theme | Light bar with dark controls; System/Dark restored the dark glass |
+| Corner/magnification | `CornerRadius=30`, `Magnification=1.2` persisted and survived restart |
+| Proximity | Chrome and immediate neighbours enlarged; dock bounds unchanged |
+| Auto-hide | Hidden after the delay; revealed at the edge; settings/menu interaction pauses |
+| Fullscreen | Chrome F11 hid the dock; normal mode restored it |
+| Second display | Dock rect `3324,1185,551,90`; primary `684,915,551,90` |
+| Persistence | Pinned apps, layout, theme, monitor, delays and ClockWidget recovered |
+| Idle cost | 156 ms CPU over 10 s, 86.3 MB private, 217 MB working set |
+
+> Fullscreen testing used Chrome F11, not a fullscreen game. The shell exclusive-state path is implemented but not hardware-validated with a game. Mixed-DPI behavior on two displays remains pending.
+
 ## 3. Fixes applied during validation
 
 1. **Broken solution file for CLI restore**
@@ -182,7 +214,7 @@ The runtime reuses `IWidgetInstanceService` from Foundation 0.2. At startup `Wid
    - Symptom: `SQLitePCLRaw.lib.e_sqlite3 2.1.11` flagged (transitive via EF Core Sqlite).
    - Fix: direct `SQLitePCLRaw.bundle_e_sqlite3` reference in `OpenBar.Infrastructure`, centrally pinned to **2.1.14** (patched 2.1.x line; avoids jumping to 3.x, which changes assembly identity). `dotnet list src/OpenBar.App package --vulnerable --include-transitive` now reports no vulnerable packages.
 
-5. **Tests added (real, executed — 230 total across 6 projects)**
+5. **Tests added (real, executed — 238 total across 6 projects)**
    - `tests/OpenBar.Domain.Tests/WidgetIdentifierTests.cs` — widget contract metadata/refresh invariant.
    - `tests/OpenBar.Application.Tests/HostCompositionTests.cs` — Host/DI builds and resolves services.
    - `tests/OpenBar.Application.Tests/HostLifecycleTests.cs` — hosted services start in registration order, stop in reverse, container-created singletons are disposed, a throwing `StopAsync` does not prevent remaining services from stopping.
@@ -204,8 +236,9 @@ The runtime reuses `IWidgetInstanceService` from Foundation 0.2. At startup `Wid
    - `tests/OpenBar.WidgetRuntime.Tests/WidgetRuntimeLifecycleTests.cs` — create/start/stop/restart/delete, multiple instances, unique names, idempotence, concurrency, fault isolation, settings, window close and unavailable instances.
    - `tests/OpenBar.WidgetRuntime.Tests/WidgetRuntimePersistenceTests.cs` — real SQLite create/recover/update/disable/delete, independent JSON, unknown rows and restart without duplicates.
    - `tests/OpenBar.Infrastructure.Tests/Persistence/PinnedApplicationServiceTests.cs` — real SQLite pinned CRUD, duplicate targets, transactional reorder, reopen persistence and invalid input.
-   - `tests/OpenBar.Dock.Tests/DockLayoutCalculatorTests.cs` — four-edge geometry, alignment, DPI, stretch, clamping and monitor fallback.
-   - `tests/OpenBar.Dock.Tests/DockAutoHideControllerTests.cs` — show/hide delay, edge activation, flicker prevention and disable behavior.
+   - `tests/OpenBar.Dock.Tests/DockLayoutCalculatorTests.cs` — four-edge geometry, alignment, DPI, stretch, clamping, monitor fallback and new visual defaults.
+   - `tests/OpenBar.Dock.Tests/DockMagnificationCalculatorTests.cs` — maximum under the cursor, proportional neighbours, falloff, disabled magnification and empty input.
+   - `tests/OpenBar.Dock.Tests/DockAutoHideControllerTests.cs` — show/hide delays, edge activation, flicker prevention and disable behavior.
    - `tests/OpenBar.Dock.Tests/DockItemComposerTests.cs` — AUMID/executable/alias matching, unpinned grouping, explorer-host rule and ordering.
    - `tests/OpenBar.Dock.Tests/DockControllerTests.cs` — default layout, add/remove/reorder, launch/activate, cooldown, refresh, layout clamping and shortcut icon resolution.
    - `tests/OpenBar.WidgetRuntime.Tests/WidgetRuntimeHostTests.cs` — Host start with empty/existing DB, recovery, disabled instances, shutdown and restart.
@@ -233,17 +266,17 @@ Do not create unnecessary files, duplicate implementations, or use fake/placehol
 - Widgets communicate via contracts/events; faulty widget must not crash app.
 - No plaintext credentials; use Credential Manager/DPAPI.
 
-## 6. Remaining work after Foundation 0.4
-Verified in this stage: toolchain, restore/build/tests, single-instance startup, tray integration, controlled shutdown, SQLite/EF Core persistence, widget runtime, and the first real dock (window model, real icons, pinned/running apps, launch/activate, context menu, drag reorder, four edges, DPI geometry, auto-hide, settings and restart persistence). Still **not implemented** (do not mark complete):
-1. Structured production logging configuration (persistent providers, levels) and global crash reporting beyond the WinUI unhandled-exception log.
-2. Dock drag/resize/snapping, floating/wide modes, fullscreen-specific auto-hide tuning and reduced-motion accessibility.
-3. Multi-monitor topology verification with a real second display (code uses `DisplayAreaWatcher`, validated only on one monitor).
-4. MSIX/AUMID discovery beyond Start Menu shortcuts and a full app/file picker; pinning arbitrary Windows Apps entries.
-5. CPU/RAM widget, System Bridge polling and additional official widgets.
-6. Windows autostart (explicitly out of scope for this phase).
-7. Final icon/brand artwork and the full Liquid Glass design system.
-8. Credential Manager/DPAPI secret store for integrations (only the "no secrets in SQLite" policy exists).
-9. Out-of-process third-party plugin host and IPC (ALC is not a security boundary).
+## 6. Remaining work after Foundation 0.5
+Verified in this stage: toolchain, restore/build/tests, single-instance startup, tray integration, controlled shutdown, SQLite/EF Core persistence, widget runtime, and a polished dock with themes, proximity magnification, drag reorder, four edges, auto-hide, fullscreen awareness, monitor/DPI selection, settings and restart persistence. Still **not implemented** (do not mark complete):
+1. Mixed-DPI validation across two displays and per-monitor dock layouts.
+2. Dock drag/resize/snapping, floating/wide modes and fullscreen auto-hide tuning for games.
+3. Full MSIX/AUMID application discovery beyond Start Menu shortcuts and explicit paths.
+4. CPU/RAM widget, System Bridge polling and additional official widgets.
+5. Windows autostart (explicitly out of scope for this phase).
+6. Final brand artwork and the complete Liquid Glass design system.
+7. Credential Manager/DPAPI secret store for integrations (only the "no secrets in SQLite" policy exists).
+8. Out-of-process third-party plugin host and IPC (ALC is not a security boundary).
+9. Automated UI tests for WinUI surfaces; visual interactions remain manually validated.
 
 ## 7. Single-instance IPC contract (current)
 - Names: `Local\<appId>.SingleInstance.<userSID>` (mutex) and `<appId>.SingleInstance.<userSID>` (pipe), `appId` ASCII alphanumeric.

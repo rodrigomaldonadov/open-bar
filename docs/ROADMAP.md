@@ -97,15 +97,38 @@ Goal: replace the provisional window with a real floating dock that launches/act
 - Runtime: restart restored the bottom layout, pinned Notepad, disabled auto-hide setting and the ClockWidget window; startup journal incremented.
 - Runtime: dock is absent from the taskbar; a second OpenBar process exits and one instance remains.
 
-## Near-term (post 0.4)
-- Replace the provisional icon with final brand artwork; validate tray behavior across Explorer restarts and multi-DPI setups.
-- Dock drag/resize/snapping, multi-monitor topology validation and per-monitor layouts.
-- App management refinements: MSIX/AUMID discovery beyond Start Menu shortcuts, file picker, pin/unpin from running tiles.
-- System Bridge service abstractions + shared polling/scheduler (CPU/RAM first).
-- Dock behaviors (floating/wide modes, auto-hide timing/fullscreen refinements, accessibility/reduced motion).
-- Widget placement persistence and dock-integrated widget surfaces (still separate windows for now).
-- Settings: broader configuration UI and a Credential Manager/DPAPI secret store for integrations.
-- Migration/rollback runbook (restore from `backups/`) and automated migration tests against previous schema versions.
+## Foundation 0.5 — Visual Polish & Desktop Experience (complete 2026-11-16)
+Goal: refine the real dock into a fluid, theme-aware desktop experience without adding unrelated features.
+
+- [x] **Theme/material**: System/Light/Dark themes, theme dictionaries, glass tint/border/action colors, configurable corner radius. *(VERIFIED — manual light/dark + persisted)*
+- [x] **Proximity magnification**: cursor-driven smooth falloff, neighbor reaction, horizontal/vertical axes, fixed layout cells. *(VERIFIED — manual + unit tests)*
+- [x] **Animations**: fade/scale show/hide, reduced-motion support from Windows and a persisted setting. *(VERIFIED — code/tests; transitions visually exercised)*
+- [x] **Auto-hide**: configurable show/hide delays, edge activation, menu/tools suppression, no polling when disabled. *(VERIFIED — manual hide/reveal + tests)*
+- [x] **Fullscreen**: shell exclusive state + conservative borderless heuristic, dock hide/restore, `Unknown` state while OpenBar owns the foreground. *(VERIFIED — Chrome F11 manual; games not launched)*
+- [x] **Monitors/DPI**: monitor selector, target-display DPI, work-area clamping, display watcher, persistence. *(VERIFIED on two displays, move primary↔secondary; mixed DPI pending)*
+- [x] **Settings**: theme, radius, delays, animations, fullscreen, monitor and all prior options; native themed tools window. *(VERIFIED — persisted)*
+- [x] **Performance**: measured idle CPU/memory; refresh only while visible, fullscreen polling at 450 ms, auto-hide polling only when enabled. *(VERIFIED — measurements below)*
+- [x] **Compatibility**: ClockWidget, tray, single-instance, pinned/running apps, persistence and reorder unchanged. *(VERIFIED)*
+
+### Verified Foundation 0.5 evidence
+- `dotnet build OpenBar.sln -c Debug` → **0 warnings, 0 errors**; `dotnet test OpenBar.sln -c Debug` → **238/238 passed**.
+- Runtime: light theme rendered a light glass bar with dark controls; System/Dark restored the dark treatment.
+- Runtime: corner radius 30 and magnification 1.2 persisted in SQLite and were visible after restart.
+- Runtime: proximity magnification enlarged Chrome and its immediate neighbors on hover without changing the dock bounds.
+- Runtime: auto-hide hid the dock after the configured delay and revealed it at the edge; context menus/settings pause it.
+- Runtime: Chrome F11 fullscreen hid the dock and restoring normal mode brought it back; the dock stayed hidden while the fullscreen app remained behind OpenBar.
+- Runtime: the dock moved from the primary display to the second display (`rect 3324,1185,551,90`) and back to the primary (`684,915,551,90`).
+- Runtime: ClockWidget and pinned apps survived restart; tray icon and single-instance behavior remained intact.
+- Measured idle cost while visible: **156 ms CPU / 10 s**, **86.3 MB private memory**, 217 MB working set.
+
+## Near-term (post 0.5)
+- Validate mixed-DPI multi-monitor setups and per-monitor dock placement.
+- Dock drag/resize/snapping, floating/wide modes and auto-hide fullscreen refinements.
+- Full MSIX/AUMID application picker and arbitrary Start Menu/AppsFolder pinning.
+- System Bridge polling (CPU/RAM) and additional official widgets.
+- Final brand artwork and the complete Liquid Glass design system.
+- Credential Manager/DPAPI secret store for integrations.
+- Out-of-process third-party plugin host + IPC (ALC is not a security boundary).
 
 ## Mid-term
 - Integrations Hub connectors (official APIs/OAuth, credential storage via Credential Manager/DPAPI).

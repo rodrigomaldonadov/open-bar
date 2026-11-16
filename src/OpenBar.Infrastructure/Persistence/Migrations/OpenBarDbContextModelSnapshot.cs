@@ -99,8 +99,20 @@ namespace OpenBar.Infrastructure.Persistence.Migrations
                     b.Property<bool>("AutoHide")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("AutoHideHideDelayMs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("AutoHideShowDelayMs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("CornerRadius")
+                        .HasColumnType("REAL");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("HideInFullscreen")
+                        .HasColumnType("INTEGER");
 
                     b.Property<double>("IconSize")
                         .HasColumnType("REAL");
@@ -132,11 +144,19 @@ namespace OpenBar.Infrastructure.Persistence.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("ReduceAnimations")
+                        .HasColumnType("INTEGER");
+
                     b.Property<double>("Size")
                         .HasColumnType("REAL");
 
                     b.Property<double>("Spacing")
                         .HasColumnType("REAL");
+
+                    b.Property<string>("Theme")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("TEXT");
@@ -156,6 +176,12 @@ namespace OpenBar.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_DockLayouts_AnimationDuration", "\"AnimationDurationMs\" >= 0 AND \"AnimationDurationMs\" <= 2000");
 
+                            t.HasCheckConstraint("CK_DockLayouts_AutoHideHideDelay", "\"AutoHideHideDelayMs\" >= 0 AND \"AutoHideHideDelayMs\" <= 5000");
+
+                            t.HasCheckConstraint("CK_DockLayouts_AutoHideShowDelay", "\"AutoHideShowDelayMs\" >= 0 AND \"AutoHideShowDelayMs\" <= 2000");
+
+                            t.HasCheckConstraint("CK_DockLayouts_CornerRadius", "\"CornerRadius\" >= 0 AND \"CornerRadius\" <= 48");
+
                             t.HasCheckConstraint("CK_DockLayouts_IconSize", "\"IconSize\" > 0 AND \"IconSize\" <= 256");
 
                             t.HasCheckConstraint("CK_DockLayouts_Magnification", "\"Magnification\" >= 1 AND \"Magnification\" <= 2");
@@ -171,6 +197,8 @@ namespace OpenBar.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_DockLayouts_Size", "\"Size\" > 0");
 
                             t.HasCheckConstraint("CK_DockLayouts_Spacing", "\"Spacing\" >= 0 AND \"Spacing\" <= 64");
+
+                            t.HasCheckConstraint("CK_DockLayouts_Theme", "\"Theme\" IN ('System', 'Light', 'Dark')");
                         });
                 });
 

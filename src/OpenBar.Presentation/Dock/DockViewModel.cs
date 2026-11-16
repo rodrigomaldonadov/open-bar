@@ -4,8 +4,10 @@ using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml;
 using OpenBar.Application.Dock;
 using OpenBar.Domain.Layouts;
+using Windows.UI.ViewManagement;
 
 namespace OpenBar.Presentation.Dock;
 
@@ -22,6 +24,7 @@ public sealed partial class DockViewModel : ObservableObject, IDisposable
     private readonly DispatcherQueue? _dispatcher;
     private readonly DispatcherQueueTimer? _refreshTimer;
     private readonly Dictionary<string, DockItemViewModel> _itemCache = new(StringComparer.Ordinal);
+    private readonly UISettings? _uiSettings;
 
     private DockEdge _position = DockEdge.Bottom;
     private DockAlignment _alignment = DockAlignment.Center;
@@ -30,9 +33,16 @@ public sealed partial class DockViewModel : ObservableObject, IDisposable
     private double _magnification = 1.12;
     private double _materialOpacity = 0.55;
     private int _animationDurationMs = 180;
+    private int _effectiveAnimationDurationMs = 180;
     private bool _autoHide;
     private double _offset = 12;
     private string _monitorTarget = DockLayout.PrimaryMonitorTarget;
+    private DockTheme _theme = DockTheme.System;
+    private double _cornerRadius = 22;
+    private int _autoHideShowDelayMs = 150;
+    private int _autoHideHideDelayMs = 550;
+    private bool _reduceAnimations;
+    private bool _hideInFullscreen = true;
     private bool _initialized;
     private bool _active;
     private bool _refreshing;
@@ -52,6 +62,16 @@ public sealed partial class DockViewModel : ObservableObject, IDisposable
         _icons = icons;
         _logger = logger;
         _dispatcher = DispatcherQueue.GetForCurrentThread();
+
+        try
+        {
+            _uiSettings = new UISettings();
+            _uiSettings.AnimationsEnabledChanged += OnAnimationsEnabledChanged;
+        }
+        catch (Exception ex)
+        {
+            LogAnimationPreferenceFailed(_logger, ex);
+        }
 
         if (_dispatcher is not null)
         {
@@ -85,7 +105,8 @@ public sealed partial class DockViewModel : ObservableObject, IDisposable
     }
 
     public double IconSize
-    {        get => _iconSize;
+    {
+        get => _iconSize;
         private set => SetProperty(ref _iconSize, value);
     }
 
@@ -113,6 +134,70 @@ public sealed partial class DockViewModel : ObservableObject, IDisposable
         private set => SetProperty(ref _animationDurationMs, value);
     }
 
+    public int EffectiveAnimationDurationMs
+    {
+        get => _effectiveAnimationDurationMs;
+        private set => SetProperty(ref _effectiveAnimationDurationMs, value);
+    }
+
+    public DockTheme Theme
+    {
+        get => _theme;
+        private set
+        {
+            if (SetProperty(ref _theme, value))
+            {
+                OnPropertyChanged(nameof(ThemeElement));
+            }
+        }
+    }
+
+    public ElementTheme ThemeElement
+        => _theme switch
+        {
+            DockTheme.Light => ElementTheme.Light,
+            DockTheme.Dark => ElementTheme.Dark,
+            _ => ElementTheme.Default
+        };
+
+    public double CornerRadius
+    {
+        get => _cornerRadius;
+        private set
+        {
+            if (SetProperty(ref _cornerRadius, value))
+            {
+                OnPropertyChanged(nameof(CornerRadiusValue));
+            }
+        }
+    }
+
+    public Microsoft.UI.Xaml.CornerRadius CornerRadiusValue => new(_cornerRadius);
+
+    public int AutoHideShowDelayMs
+    {
+        get => _autoHideShowDelayMs;
+        private set => SetProperty(ref _autoHideShowDelayMs, value);
+    }
+
+    public int AutoHideHideDelayMs
+    {
+        get => _autoHideHideDelayMs;
+        private set => SetProperty(ref _autoHideHideDelayMs, value);
+    }
+
+    public bool ReduceAnimations
+    {
+        get => _reduceAnimations;
+        private set => SetProperty(ref _reduceAnimations, value);
+    }
+
+    public bool HideInFullscreen
+    {
+        get => _hideInFullscreen;
+        private set => SetProperty(ref _hideInFullscreen, value);
+    }
+
     public bool AutoHide
     {
         get => _autoHide;
@@ -131,7 +216,7 @@ public sealed partial class DockViewModel : ObservableObject, IDisposable
         private set => SetProperty(ref _monitorTarget, value);
     }
 
-    public int ItemCount => PinnedItems.Count + RunningItems.Count + 1;
+    public int ItemCount => PinnedItems.Count + RunningItems.Count + 2;
 
     public int PinnedCount => PinnedItems.Count;
 
@@ -232,6 +317,13 @@ public sealed partial class DockViewModel : ObservableObject, IDisposable
         double materialOpacity,
         int animationDurationMs,
         bool autoHide,
+        DockTheme theme,
+        double cornerRadius,
+        int autoHideShowDelayMs,
+        int autoHideHideDelayMs,
+        bool reduceAnimations,
+        bool hideInFullscreen,
+        string monitorTarget,
         CancellationToken cancellationToken = default)
     {
         var layout = _controller.Layout;
@@ -242,6 +334,13 @@ public sealed partial class DockViewModel : ObservableObject, IDisposable
         layout.MaterialOpacity = materialOpacity;
         layout.AnimationDurationMs = animationDurationMs;
         layout.AutoHide = autoHide;
+        layout.Theme = theme;
+        layout.CornerRadius = cornerRadius;
+        layout.AutoHideShowDelayMs = autoHideShowDelayMs;
+        layout.AutoHideHideDelayMs = autoHideHideDelayMs;
+        layout.ReduceAnimations = reduceAnimations;
+        layout.HideInFullscreen = hideInFullscreen;
+        layout.MonitorTarget = monitorTarget;
 
         await _controller.UpdateLayoutAsync(layout, cancellationToken).ConfigureAwait(true);
         ApplyLayout(_controller.Layout);
@@ -328,10 +427,42 @@ public sealed partial class DockViewModel : ObservableObject, IDisposable
         AutoHide = layout.AutoHide;
         Offset = layout.Offset;
         MonitorTarget = layout.MonitorTarget;
+        Theme = layout.Theme;
+        CornerRadius = layout.CornerRadius;
+        AutoHideShowDelayMs = layout.AutoHideShowDelayMs;
+        AutoHideHideDelayMs = layout.AutoHideHideDelayMs;
+        ReduceAnimations = layout.ReduceAnimations;
+        HideInFullscreen = layout.HideInFullscreen;
+        EffectiveAnimationDurationMs = ComputeEffectiveAnimationDuration();
 
         ApplyItemLayout(PinnedItems);
         ApplyItemLayout(RunningItems);
         LayoutChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private int ComputeEffectiveAnimationDuration()
+        => _reduceAnimations || _uiSettings is { AnimationsEnabled: false }
+            ? 0
+            : Math.Max(0, _animationDurationMs);
+
+    private void OnAnimationsEnabledChanged(
+        UISettings sender,
+        UISettingsAnimationsEnabledChangedEventArgs args)
+    {
+        if (_dispatcher is not null && !_dispatcher.HasThreadAccess)
+        {
+            _ = _dispatcher.TryEnqueue(RefreshAnimationPreference);
+            return;
+        }
+
+        RefreshAnimationPreference();
+    }
+
+    private void RefreshAnimationPreference()
+    {
+        EffectiveAnimationDurationMs = ComputeEffectiveAnimationDuration();
+        ApplyItemLayout(PinnedItems);
+        ApplyItemLayout(RunningItems);
     }
 
     private void ApplyItemLayout(ObservableCollection<DockItemViewModel> items)
@@ -342,7 +473,7 @@ public sealed partial class DockViewModel : ObservableObject, IDisposable
                 IconSize,
                 Spacing,
                 Magnification,
-                AnimationDurationMs,
+                EffectiveAnimationDurationMs,
                 isLast: index == items.Count - 1);
         }
     }
@@ -485,6 +616,11 @@ public sealed partial class DockViewModel : ObservableObject, IDisposable
         _controller.Changed -= OnControllerChanged;
         PinnedItems.CollectionChanged -= OnPinnedItemsChanged;
 
+        if (_uiSettings is not null)
+        {
+            _uiSettings.AnimationsEnabledChanged -= OnAnimationsEnabledChanged;
+        }
+
         if (_refreshTimer is not null)
         {
             _refreshTimer.Stop();
@@ -503,4 +639,7 @@ public sealed partial class DockViewModel : ObservableObject, IDisposable
 
     [LoggerMessage(EventId = 7104, Level = LogLevel.Warning, Message = "Could not persist the dock order; reloading.")]
     private static partial void LogReorderFailed(ILogger<DockViewModel> logger, Exception exception);
+
+    [LoggerMessage(EventId = 7105, Level = LogLevel.Debug, Message = "Could not query the Windows animation preference.")]
+    private static partial void LogAnimationPreferenceFailed(ILogger<DockViewModel> logger, Exception exception);
 }

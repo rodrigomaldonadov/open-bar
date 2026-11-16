@@ -50,7 +50,7 @@ public sealed class DockAutoHideControllerTests
     [Fact]
     public void MovingToTheActivationEdgeShowsAHiddenDock()
     {
-        var controller = new DockAutoHideController { Enabled = true, HideDelay = TimeSpan.Zero };
+        var controller = new DockAutoHideController { Enabled = true, HideDelay = TimeSpan.Zero, ShowDelay = TimeSpan.Zero };
         controller.Reset(hidden: true);
 
         var action = controller.Update(
@@ -69,7 +69,7 @@ public sealed class DockAutoHideControllerTests
     {
         foreach (var edge in Enum.GetValues<DockEdge>())
         {
-            var controller = new DockAutoHideController { Enabled = true };
+            var controller = new DockAutoHideController { Enabled = true, ShowDelay = TimeSpan.Zero };
             controller.Reset(hidden: true);
 
             var cursor = edge switch
@@ -82,6 +82,40 @@ public sealed class DockAutoHideControllerTests
 
             Assert.Equal(AutoHideAction.Show, controller.Update(DockBounds, WorkArea, edge, cursor, Now));
         }
+    }
+
+    [Fact]
+    public void ActivationEdgeWaitsForTheConfiguredShowDelay()
+    {
+        var controller = new DockAutoHideController
+        {
+            Enabled = true,
+            ShowDelay = TimeSpan.FromMilliseconds(250)
+        };
+        controller.Reset(hidden: true);
+        var cursor = new DockPoint(900, WorkArea.Bottom);
+
+        Assert.Equal(AutoHideAction.None, controller.Update(DockBounds, WorkArea, DockEdge.Bottom, cursor, Now));
+        Assert.Equal(AutoHideAction.None, controller.Update(DockBounds, WorkArea, DockEdge.Bottom, cursor, Now.AddMilliseconds(100)));
+        Assert.Equal(AutoHideAction.Show, controller.Update(DockBounds, WorkArea, DockEdge.Bottom, cursor, Now.AddMilliseconds(300)));
+    }
+
+    [Fact]
+    public void LeavingTheEdgeBeforeTheShowDelayCancelsTheReveal()
+    {
+        var controller = new DockAutoHideController
+        {
+            Enabled = true,
+            ShowDelay = TimeSpan.FromMilliseconds(250)
+        };
+        controller.Reset(hidden: true);
+
+        _ = controller.Update(DockBounds, WorkArea, DockEdge.Bottom, new DockPoint(900, WorkArea.Bottom), Now);
+        _ = controller.Update(DockBounds, WorkArea, DockEdge.Bottom, new DockPoint(900, 500), Now.AddMilliseconds(100));
+
+        Assert.Equal(
+            AutoHideAction.None,
+            controller.Update(DockBounds, WorkArea, DockEdge.Bottom, new DockPoint(900, WorkArea.Bottom), Now.AddMilliseconds(200)));
     }
 
     [Fact]

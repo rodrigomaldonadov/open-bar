@@ -124,6 +124,12 @@ public sealed class DockLayoutService : IDockLayoutService
         entity.Magnification = layout.Magnification;
         entity.MaterialOpacity = layout.MaterialOpacity;
         entity.AnimationDurationMs = layout.AnimationDurationMs;
+        entity.CornerRadius = layout.CornerRadius;
+        entity.Theme = layout.Theme;
+        entity.AutoHideShowDelayMs = layout.AutoHideShowDelayMs;
+        entity.AutoHideHideDelayMs = layout.AutoHideHideDelayMs;
+        entity.ReduceAnimations = layout.ReduceAnimations;
+        entity.HideInFullscreen = layout.HideInFullscreen;
         entity.AutoHide = layout.AutoHide;
         entity.IsDefault = layout.IsDefault;
         entity.MonitorTarget = layout.MonitorTarget;
@@ -248,6 +254,23 @@ public sealed class DockLayoutService : IDockLayoutService
         if (layout.AnimationDurationMs is < 0 or > 1_000)
         {
             throw new PersistenceValidationException("The dock animation duration must be between 0 and 1000 ms.");
+        }
+
+        ValidateRange(layout.CornerRadius, 0, 48, "The dock corner radius must be between 0 and 48 DIPs.");
+
+        if (!Enum.IsDefined(layout.Theme))
+        {
+            throw new PersistenceValidationException("The dock theme is not valid.");
+        }
+
+        if (layout.AutoHideShowDelayMs is < 0 or > 2_000)
+        {
+            throw new PersistenceValidationException("The auto-hide show delay must be between 0 and 2000 ms.");
+        }
+
+        if (layout.AutoHideHideDelayMs is < 0 or > 5_000)
+        {
+            throw new PersistenceValidationException("The auto-hide hide delay must be between 0 and 5000 ms.");
         }
 
         if (string.IsNullOrWhiteSpace(layout.MonitorTarget)

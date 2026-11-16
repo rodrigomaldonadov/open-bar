@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using OpenBar.Application.Dock;
 using OpenBar.Application.Lifecycle;
 using OpenBar.Application.Windows;
 using OpenBar.Dock;
@@ -35,18 +36,26 @@ public sealed partial class DockWindowService : IWindowManagementService, IDispo
     private readonly DockViewModel _viewModel;
     private readonly IApplicationLifecycle _lifecycle;
     private readonly DockAutoHideController _autoHide;
+    private readonly IFullscreenStateService _fullscreen;
     private readonly ILogger<DockWindowService> _logger;
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly DispatcherQueueTimer _autoHideTimer;
+    private readonly DispatcherQueueTimer _fullscreenTimer;
     private readonly IntPtr _windowHandle;
 
     private DisplayAreaWatcher? _displayWatcher;
     private DockRect _dockBounds;
     private DockRect _workArea;
     private bool _autoHideTimerRunning;
+    private bool _fullscreenTimerRunning;
+    private bool _fullscreenActive;
+    private bool _hiddenForFullscreen;
+    private bool _interactionSuppressed;
+    private bool _viewInteractionActive;
     private bool _shutdownClose;
     private bool _minimizedToTray;
     private bool _hidden;
+    private bool _hiding;
     private bool _disposed;
 
     public DockWindowService(
@@ -54,16 +63,19 @@ public sealed partial class DockWindowService : IWindowManagementService, IDispo
         DockViewModel viewModel,
         IApplicationLifecycle lifecycle,
         DockAutoHideController autoHide,
+        IFullscreenStateService fullscreen,
         ILogger<DockWindowService> logger)
     {
         ArgumentNullException.ThrowIfNull(window);
         ArgumentNullException.ThrowIfNull(viewModel);
         ArgumentNullException.ThrowIfNull(autoHide);
+        ArgumentNullException.ThrowIfNull(fullscreen);
 
         _window = window;
         _viewModel = viewModel;
         _lifecycle = lifecycle;
         _autoHide = autoHide;
+        _fullscreen = fullscreen;
         _logger = logger;
         _windowHandle = WindowNative.GetWindowHandle(window);
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
@@ -75,9 +87,15 @@ public sealed partial class DockWindowService : IWindowManagementService, IDispo
         _autoHideTimer.IsRepeating = true;
         _autoHideTimer.Tick += OnAutoHideTick;
 
+        _fullscreenTimer = _dispatcherQueue.CreateTimer();
+        _fullscreenTimer.Interval = TimeSpan.FromMilliseconds(450);
+        _fullscreenTimer.IsRepeating = true;
+        _fullscreenTimer.Tick += OnFullscreenTick;
+
         _window.AppWindow.Closing += OnWindowClosing;
         _window.AppWindow.Changed += OnWindowChanged;
         _viewModel.LayoutChanged += OnLayoutChanged;
+        _window.DockView.InteractionStateChanged += OnDockInteractionChanged;
         _autoHide.Enabled = _viewModel.AutoHide;
 
         TryStartDisplayWatcher();
@@ -87,18 +105,32 @@ public sealed partial class DockWindowService : IWindowManagementService, IDispo
         {
             StartAutoHideTimer();
         }
+
+        if (_viewModel.HideInFullscreen)
+        {
+            StartFullscreenTimer();
+        }
     }
 
-    public bool IsVisible => !_hidden && _window.AppWindow.IsVisible;
+    public bool IsVisible => !_hidden && !_hiding && _window.AppWindow.IsVisible;
+
+    public void SetInteractionSuppressed(bool suppressed)
+    {
+        _interactionSuppressed = suppressed;
+
+        if (suppressed)
+        {
+            _autoHide.Reset(hidden: _hidden);
+        }
+    }
 
     public void Show()
     {
-        if (_disposed)
+        if (_disposed || _fullscreenActive)
         {
             return;
         }
 
-        _autoHide.Reset(hidden: false);
         ShowDock(activate: false);
         ApplyLayout();
     }
@@ -127,12 +159,11 @@ public sealed partial class DockWindowService : IWindowManagementService, IDispo
 
     public void ShowAndActivate()
     {
-        if (_disposed)
+        if (_disposed || _fullscreenActive)
         {
             return;
         }
 
-        _autoHide.Reset(hidden: false);
         ShowDock(activate: true);
         ApplyLayout();
         _window.Activate();
@@ -147,7 +178,9 @@ public sealed partial class DockWindowService : IWindowManagementService, IDispo
         }
 
         _shutdownClose = true;
+        _window.DockView.CancelHideAnimation();
         StopAutoHideTimer();
+        StopFullscreenTimer();
         StopDisplayWatcher();
 
         try
@@ -173,13 +206,12 @@ public sealed partial class DockWindowService : IWindowManagementService, IDispo
                 presenter.SetBorderAndTitleBar(false, false);
             }
 
-            // Keep the dock out of Alt+Tab and the taskbar through the supported
-            // AppWindow property (no WS_EX_TOOLWINDOW hack).
+            // AppWindow's supported property removes the dock from Alt+Tab.
             _window.AppWindow.IsShownInSwitchers = false;
 
-            // IsShownInSwitchers does not remove the taskbar button for an
-            // unpackaged WinUI window on Windows 11; the documented tool-window
-            // extended style is still required.
+            // It does not remove the taskbar button for an unpackaged WinUI
+            // window on Windows 11; the tool-window extended style is still
+            // required for that part.
             var extendedStyle = GetWindowLongPtr(_windowHandle, GwlExStyle).ToInt64();
             extendedStyle |= WsExToolWindow;
             extendedStyle &= ~WsExAppWindow;
@@ -243,11 +275,12 @@ public sealed partial class DockWindowService : IWindowManagementService, IDispo
             _viewModel.PinnedCount,
             _viewModel.RunningCount);
 
-        var dpi = GetDpiForWindow(_windowHandle);
-        var scale = dpi > 0 ? dpi / 96.0 : 1.0;
+        var scale = GetDpiScale(display);
         _dockBounds = DockLayoutCalculator.CalculateBounds(layout, metrics, _workArea, scale);
 
         _autoHide.Enabled = _viewModel.AutoHide;
+        _autoHide.ShowDelay = TimeSpan.FromMilliseconds(_viewModel.AutoHideShowDelayMs);
+        _autoHide.HideDelay = TimeSpan.FromMilliseconds(_viewModel.AutoHideHideDelayMs);
 
         if (_viewModel.AutoHide)
         {
@@ -257,13 +290,33 @@ public sealed partial class DockWindowService : IWindowManagementService, IDispo
         {
             StopAutoHideTimer();
 
-            if (_hidden)
+            if (_hidden && !_hiddenForFullscreen && !_fullscreenActive)
             {
                 ShowDock(activate: false);
             }
         }
 
-        if (_hidden)
+        if (_viewModel.HideInFullscreen)
+        {
+            StartFullscreenTimer();
+        }
+        else
+        {
+            StopFullscreenTimer();
+            _fullscreenActive = false;
+
+            if (_hiddenForFullscreen)
+            {
+                _hiddenForFullscreen = false;
+
+                if (!_hidden)
+                {
+                    ShowDock(activate: false);
+                }
+            }
+        }
+
+        if (_hidden || _hiding)
         {
             return;
         }
@@ -271,8 +324,27 @@ public sealed partial class DockWindowService : IWindowManagementService, IDispo
         MoveDock();
     }
 
-    private DisplayArea ResolveDisplay(IReadOnlyList<DisplayArea> monitors)
+    private double GetDpiScale(DisplayArea display)
     {
+        var center = new POINT
+        {
+            X = display.WorkArea.X + display.WorkArea.Width / 2,
+            Y = display.WorkArea.Y + display.WorkArea.Height / 2
+        };
+
+        var monitor = MonitorFromPoint(center, 2);
+        if (monitor != IntPtr.Zero
+            && GetDpiForMonitor(monitor, 0, out var dpiX, out _) == 0
+            && dpiX > 0)
+        {
+            return dpiX / 96.0;
+        }
+
+        var windowDpi = GetDpiForWindow(_windowHandle);
+        return windowDpi > 0 ? windowDpi / 96.0 : 1.0;
+    }
+
+    private DisplayArea ResolveDisplay(IReadOnlyList<DisplayArea> monitors)    {
         var infos = new DockMonitorInfo[monitors.Count];
 
         for (var index = 0; index < monitors.Count; index++)
@@ -318,11 +390,16 @@ public sealed partial class DockWindowService : IWindowManagementService, IDispo
     private void ShowDock(bool activate)
     {
         _hidden = false;
+        _hiding = false;
+        _window.DockView.CancelHideAnimation();
+        _autoHide.Reset(hidden: false);
 
         try
         {
             _window.AppWindow.Show(activate);
             _viewModel.SetActive(true);
+            _window.DockView.PlayShowAnimation();
+            ApplyLayout();
             LogShown(_logger);
 
             if (_viewModel.AutoHide)
@@ -338,31 +415,73 @@ public sealed partial class DockWindowService : IWindowManagementService, IDispo
 
     private void HideDock()
     {
-        _hidden = true;
-        _autoHide.Reset(hidden: true);
+        if (_hidden || _hiding)
+        {
+            return;
+        }
+
+        _hiding = true;
+
+        void CompleteHide()
+        {
+            if (!_hiding)
+            {
+                return;
+            }
+
+            _hiding = false;
+            _hidden = true;
+            _autoHide.Reset(hidden: true);
+
+            try
+            {
+                _viewModel.SetActive(false);
+                _window.AppWindow.Hide();
+                LogHidden(_logger);
+            }
+            catch (Exception ex)
+            {
+                LogHideFailed(_logger, ex);
+            }
+
+            if (!_viewModel.AutoHide)
+            {
+                StopAutoHideTimer();
+            }
+        }
 
         try
         {
-            _window.AppWindow.Hide();
-            _viewModel.SetActive(false);
-            LogHidden(_logger);
+            _window.DockView.PlayHideAnimation(CompleteHide);
         }
         catch (Exception ex)
         {
             LogHideFailed(_logger, ex);
-        }
-
-        if (!_viewModel.AutoHide)
-        {
-            StopAutoHideTimer();
+            CompleteHide();
         }
     }
 
     private void OnLayoutChanged(object? sender, EventArgs e) => ApplyLayout();
 
+    private void OnDockInteractionChanged(object? sender, EventArgs e)
+    {
+        _viewInteractionActive = _window.DockView.IsInteractionActive;
+
+        if (_viewInteractionActive)
+        {
+            _autoHide.Reset(hidden: _hidden);
+        }
+    }
+
     private void OnAutoHideTick(DispatcherQueueTimer sender, object args)
     {
-        if (_disposed || !_viewModel.AutoHide || !GetCursorPos(out var point))
+        if (_disposed
+            || !_viewModel.AutoHide
+            || _fullscreenActive
+            || _interactionSuppressed
+            || _viewInteractionActive
+            || _hiding
+            || !GetCursorPos(out var point))
         {
             return;
         }
@@ -386,6 +505,55 @@ public sealed partial class DockWindowService : IWindowManagementService, IDispo
         }
     }
 
+    private void OnFullscreenTick(DispatcherQueueTimer sender, object args)
+    {
+        if (_disposed || !_viewModel.HideInFullscreen)
+        {
+            return;
+        }
+
+        var state = _fullscreen.GetState();
+
+        if (state.Kind == FullscreenKind.Unknown)
+        {
+            return;
+        }
+
+        if (state.IsFullscreen)
+        {
+            _fullscreenActive = true;
+
+            if (!_hidden && !_hiding)
+            {
+                _hiddenForFullscreen = true;
+                HideDock();
+                LogFullscreenHidden(_logger, state.Kind);
+            }
+
+            return;
+        }
+
+        if (!_fullscreenActive)
+        {
+            return;
+        }
+
+        _fullscreenActive = false;
+        _autoHide.Reset(hidden: _hidden);
+
+        if (_hiddenForFullscreen)
+        {
+            _hiddenForFullscreen = false;
+
+            if (!_viewModel.AutoHide && _hidden)
+            {
+                ShowDock(activate: false);
+                ApplyLayout();
+                LogFullscreenRestored(_logger);
+            }
+        }
+    }
+
     private void StartAutoHideTimer()
     {
         if (_autoHideTimerRunning || _disposed)
@@ -406,6 +574,28 @@ public sealed partial class DockWindowService : IWindowManagementService, IDispo
 
         _autoHideTimer.Stop();
         _autoHideTimerRunning = false;
+    }
+
+    private void StartFullscreenTimer()
+    {
+        if (_fullscreenTimerRunning || _disposed)
+        {
+            return;
+        }
+
+        _fullscreenTimer.Start();
+        _fullscreenTimerRunning = true;
+    }
+
+    private void StopFullscreenTimer()
+    {
+        if (!_fullscreenTimerRunning)
+        {
+            return;
+        }
+
+        _fullscreenTimer.Stop();
+        _fullscreenTimerRunning = false;
     }
 
     private void TryStartDisplayWatcher()
@@ -498,6 +688,7 @@ public sealed partial class DockWindowService : IWindowManagementService, IDispo
 
         _disposed = true;
         StopAutoHideTimer();
+        StopFullscreenTimer();
         StopDisplayWatcher();
 
         try
@@ -505,6 +696,7 @@ public sealed partial class DockWindowService : IWindowManagementService, IDispo
             _window.AppWindow.Closing -= OnWindowClosing;
             _window.AppWindow.Changed -= OnWindowChanged;
             _viewModel.LayoutChanged -= OnLayoutChanged;
+            _window.DockView.InteractionStateChanged -= OnDockInteractionChanged;
         }
         catch (Exception ex)
         {
@@ -560,6 +752,12 @@ public sealed partial class DockWindowService : IWindowManagementService, IDispo
     [LoggerMessage(EventId = 8115, Level = LogLevel.Debug, Message = "Dock window events were already detached during disposal.")]
     private static partial void LogEventsAlreadyDetached(ILogger<DockWindowService> logger, Exception exception);
 
+    [LoggerMessage(EventId = 8116, Level = LogLevel.Information, Message = "Dock hidden because a {Kind} fullscreen application is in the foreground.")]
+    private static partial void LogFullscreenHidden(ILogger<DockWindowService> logger, FullscreenKind kind);
+
+    [LoggerMessage(EventId = 8117, Level = LogLevel.Information, Message = "Fullscreen application ended; restoring the dock.")]
+    private static partial void LogFullscreenRestored(ILogger<DockWindowService> logger);
+
     [StructLayout(LayoutKind.Sequential)]
     private struct POINT
     {
@@ -575,6 +773,12 @@ public sealed partial class DockWindowService : IWindowManagementService, IDispo
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromPoint(POINT point, uint flags);
+
+    [DllImport("shcore.dll")]
+    private static extern int GetDpiForMonitor(IntPtr monitor, int dpiType, out uint dpiX, out uint dpiY);
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hWnd, int attribute, ref int value, int size);

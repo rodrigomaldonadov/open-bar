@@ -3,7 +3,10 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using OpenBar.Application.Dock;
+using OpenBar.Dock;
+using OpenBar.Domain.Layouts;
 using Windows.Foundation;
 
 namespace OpenBar.Presentation.Dock;
@@ -22,6 +25,9 @@ public sealed partial class DockView : UserControl
     private Point _dragStart;
     private bool _dragging;
     private bool _suppressClick;
+    private bool _interactionActive;
+    private Storyboard? _hideStoryboard;
+    private Action? _hideCompleted;
 
     public DockView(DockViewModel viewModel, ILogger<DockView> logger)
     {
@@ -40,12 +46,89 @@ public sealed partial class DockView : UserControl
         PinnedList.AddHandler(PointerMovedEvent, new PointerEventHandler(OnPinnedPointerMoved), true);
         PinnedList.AddHandler(PointerReleasedEvent, new PointerEventHandler(OnPinnedPointerReleased), true);
         PinnedList.AddHandler(PointerCaptureLostEvent, new PointerEventHandler(OnPinnedPointerCaptureLost), true);
+
+        DockShell.AddHandler(PointerMovedEvent, new PointerEventHandler(OnDockPointerMoved), true);
+        DockShell.AddHandler(PointerExitedEvent, new PointerEventHandler(OnDockPointerExited), true);
     }
 
     public DockViewModel ViewModel { get; }
 
+    public bool IsInteractionActive => _interactionActive;
+
+    public event EventHandler? InteractionStateChanged;
+
     /// <summary>Opens the separate application/settings window.</summary>
     public Func<Task>? OpenToolsAsync { get; set; }
+
+    public void PlayShowAnimation()
+    {
+        CancelHideAnimation();
+        var duration = ViewModel.EffectiveAnimationDurationMs;
+
+        if (duration <= 0)
+        {
+            DockShell.Opacity = 1;
+            ShellTransform.ScaleX = 1;
+            ShellTransform.ScaleY = 1;
+            return;
+        }
+
+        DockShell.Opacity = 0;
+        ShellTransform.ScaleX = 0.985;
+        ShellTransform.ScaleY = 0.985;
+
+        var storyboard = new Storyboard();
+        AddAnimation(storyboard, DockShell, "Opacity", 1, duration);
+        AddAnimation(storyboard, ShellTransform, "ScaleX", 1, duration);
+        AddAnimation(storyboard, ShellTransform, "ScaleY", 1, duration);
+        storyboard.Begin();
+    }
+
+    public void PlayHideAnimation(Action completed)
+    {
+        CancelHideAnimation();
+        var duration = Math.Min(ViewModel.EffectiveAnimationDurationMs, 120);
+
+        if (duration <= 0)
+        {
+            completed();
+            return;
+        }
+
+        _hideCompleted = completed;
+        _hideStoryboard = new Storyboard();
+        AddAnimation(_hideStoryboard, DockShell, "Opacity", 0, duration);
+        AddAnimation(_hideStoryboard, ShellTransform, "ScaleX", 0.985, duration);
+        AddAnimation(_hideStoryboard, ShellTransform, "ScaleY", 0.985, duration);
+        _hideStoryboard.Completed += OnHideAnimationCompleted;
+        _hideStoryboard.Begin();
+    }
+
+    public void CancelHideAnimation()
+    {
+        if (_hideStoryboard is not null)
+        {
+            _hideStoryboard.Completed -= OnHideAnimationCompleted;
+            _hideStoryboard.Stop();
+            _hideStoryboard = null;
+        }
+
+        _hideCompleted = null;
+    }
+
+    private void OnHideAnimationCompleted(object? sender, object e)
+    {
+        var completed = _hideCompleted;
+        _hideCompleted = null;
+
+        if (_hideStoryboard is not null)
+        {
+            _hideStoryboard.Completed -= OnHideAnimationCompleted;
+            _hideStoryboard = null;
+        }
+
+        completed?.Invoke();
+    }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -100,6 +183,8 @@ public sealed partial class DockView : UserControl
         AddMenuItem(flyout, "Añadir aplicación…", OpenToolsAsync ?? (() => Task.CompletedTask));
         AddMenuItem(flyout, "Configuración del dock…", OpenToolsAsync ?? (() => Task.CompletedTask));
 
+        SetInteractionActive(true);
+        flyout.Closed += (_, _) => SetInteractionActive(false);
         flyout.ShowAt((FrameworkElement)sender, e.GetPosition((UIElement)sender));
     }
 
@@ -108,6 +193,127 @@ public sealed partial class DockView : UserControl
 
     private async void OnSettingsClick(object sender, RoutedEventArgs e)
         => await OpenToolsSafeAsync();
+
+    private void OnDockPointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (_dragging)
+        {
+            ResetMagnification();
+            return;
+        }
+
+        var controls = GetItemControls();
+        if (controls.Count == 0)
+        {
+            return;
+        }
+
+        var point = e.GetCurrentPoint(DockShell).Position;
+        var horizontal = ViewModel.Position is DockEdge.Top or DockEdge.Bottom;
+        var centers = new double[controls.Count];
+
+        for (var index = 0; index < controls.Count; index++)
+        {
+            var control = controls[index];
+            var center = control.TransformToVisual(DockShell)
+                .TransformPoint(new Point(control.ActualWidth / 2, control.ActualHeight / 2));
+            centers[index] = horizontal ? center.X : center.Y;
+        }
+
+        var scales = DockMagnificationCalculator.Calculate(
+            centers,
+            horizontal ? point.X : point.Y,
+            ViewModel.IconSize,
+            ViewModel.Spacing,
+            ViewModel.Magnification);
+
+        for (var index = 0; index < controls.Count; index++)
+        {
+            var control = controls[index];
+            if (scales[index] > 1.001)
+            {
+                control.SetMagnification(scales[index], ViewModel.EffectiveAnimationDurationMs);
+            }
+            else
+            {
+                control.ResetMagnification(ViewModel.EffectiveAnimationDurationMs);
+            }
+        }
+    }
+
+    private void OnDockPointerExited(object sender, PointerRoutedEventArgs e)
+        => ResetMagnification();
+
+    private void ResetMagnification()
+    {
+        foreach (var control in GetItemControls())
+        {
+            control.ResetMagnification(ViewModel.EffectiveAnimationDurationMs);
+        }
+    }
+
+    private List<DockItemControl> GetItemControls()
+    {
+        var controls = new List<DockItemControl>();
+        AddControls(PinnedList, ViewModel.PinnedItems);
+        AddControls(RunningList, ViewModel.RunningItems);
+        return controls;
+
+        void AddControls(ItemsControl itemsControl, IEnumerable<DockItemViewModel> items)
+        {
+            foreach (var item in items)
+            {
+                if (itemsControl.ContainerFromItem(item) is not DependencyObject container)
+                {
+                    continue;
+                }
+
+                FindDescendants(container, controls);
+            }
+        }
+    }
+
+    private static void FindDescendants(DependencyObject parent, List<DockItemControl> results)
+    {
+        var count = VisualTreeHelper.GetChildrenCount(parent);
+
+        for (var index = 0; index < count; index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+
+            if (child is DockItemControl control)
+            {
+                results.Add(control);
+            }
+
+            FindDescendants(child, results);
+        }
+    }
+
+    private void SetInteractionActive(bool active)
+    {
+        if (_interactionActive == active)
+        {
+            return;
+        }
+
+        _interactionActive = active;
+        InteractionStateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private static void AddAnimation(Storyboard storyboard, DependencyObject target, string property, double value, int durationMs)
+    {
+        var animation = new DoubleAnimation
+        {
+            To = value,
+            Duration = new Duration(TimeSpan.FromMilliseconds(Math.Max(1, durationMs))),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+
+        Storyboard.SetTarget(animation, target);
+        Storyboard.SetTargetProperty(animation, property);
+        storyboard.Children.Add(animation);
+    }
 
     private void OnPinnedPointerPressed(object sender, PointerRoutedEventArgs e)
     {

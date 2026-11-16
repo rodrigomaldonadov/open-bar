@@ -1,32 +1,38 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Animation;
 
 namespace OpenBar.Presentation.Dock;
 
 /// <summary>
-/// One dock tile. Keeps layout size stable while a scale transform magnifies the
-/// icon on hover, so neighbouring items do not jump.
+/// One dock tile. The layout cell stays constant; a render transform provides
+/// proximity magnification driven by the dock view so neighbours react
+/// proportionally to the pointer position.
 /// </summary>
 public sealed partial class DockItemControl : UserControl
 {
+    private double _targetScale = 1;
+
     public DockItemControl()
     {
         InitializeComponent();
     }
 
-    private void OnPointerEntered(object sender, PointerRoutedEventArgs e)
+    public void SetMagnification(double scale, int durationMs)
     {
-        var item = DataContext as DockItemViewModel;
-        var magnification = item?.Magnification ?? 1.12;
-        Animate(magnification, 1, item?.AnimationDurationMs ?? 180);
+        if (Math.Abs(scale - _targetScale) < 0.001)
+        {
+            return;
+        }
+
+        _targetScale = scale;
+        Animate(scale, scale > 1.02 ? 1 : 0, durationMs <= 0 ? 0 : Math.Clamp(durationMs, 40, 160));
     }
 
-    private void OnPointerExited(object sender, PointerRoutedEventArgs e)
+    public void ResetMagnification(int durationMs)
     {
-        var item = DataContext as DockItemViewModel;
-        Animate(1, 0, item?.AnimationDurationMs ?? 180);
+        _targetScale = 1;
+        Animate(1, 0, durationMs <= 0 ? 0 : Math.Clamp(durationMs, 40, 160));
     }
 
     private void Animate(double scale, double hoverOpacity, int durationMs)

@@ -14,6 +14,7 @@ public static class DockInfrastructureServiceCollectionExtensions
         services.AddSingleton<IShortcutResolver, ShortcutResolver>();
         services.AddSingleton<IApplicationLauncher, ApplicationLauncher>();
         services.AddSingleton<IAppWindowService, AppWindowService>();
+        services.AddSingleton<IFullscreenStateService, WindowsFullscreenStateService>();
 
         return services;
     }
