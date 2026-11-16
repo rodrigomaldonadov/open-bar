@@ -14,10 +14,13 @@ using OpenBar.Dock;
 using OpenBar.Infrastructure.Persistence;
 using OpenBar.Infrastructure.Windows.Dock;
 using OpenBar.Infrastructure.Windows.SingleInstance;
+using OpenBar.Infrastructure.Windows.SystemBridge;
 using OpenBar.Infrastructure.Windows.SystemTray;
 using OpenBar.Presentation.Dock;
+using OpenBar.SystemBridge;
 using OpenBar.WidgetRuntime;
 using OpenBar.Widgets.Clock;
+using OpenBar.Widgets.System;
 
 namespace OpenBar.App;
 
@@ -181,6 +184,7 @@ public partial class App : Microsoft.UI.Xaml.Application
                 // Persistence initializes before the single-instance listener
                 // and the tray so no service observes an uninitialized database.
                 services.AddOpenBarPersistence();
+                services.AddOpenBarSystemBridge();
                 services.AddSingleton<ApplicationStartupJournal>();
 
                 // Dock services: platform-neutral engine (OpenBar.Dock) plus
@@ -193,7 +197,8 @@ public partial class App : Microsoft.UI.Xaml.Application
                     var viewModel = new DockViewModel(
                         provider.GetRequiredService<IDockController>(),
                         provider.GetRequiredService<DockIconService>(),
-                        provider.GetRequiredService<ILogger<DockViewModel>>());
+                        provider.GetRequiredService<ILogger<DockViewModel>>(),
+                        provider.GetRequiredService<ISystemMetrics>());
 
                     viewModel.AddTestWidget = () =>
                         provider.GetRequiredService<IWidgetRuntime>()
@@ -208,6 +213,8 @@ public partial class App : Microsoft.UI.Xaml.Application
                 // are ready when the dock becomes visible. It stops before
                 // persistence during shutdown.
                 services.AddSingleton(ClockWidgetDefinition.Create());
+                services.AddSingleton(CpuWidgetDefinition.Create());
+                services.AddSingleton(MemoryWidgetDefinition.Create());
                 services.AddSingleton<WidgetWindowService>(provider => new WidgetWindowService(
                     _dispatcherQueue,
                     provider.GetRequiredService<ILogger<WidgetWindowService>>()));
@@ -254,7 +261,8 @@ public partial class App : Microsoft.UI.Xaml.Application
         {
             _dockTools = new DockToolsWindow(
                 host.Services.GetRequiredService<DockViewModel>(),
-                host.Services.GetRequiredService<IWidgetRuntime>());
+                host.Services.GetRequiredService<IWidgetRuntime>(),
+                host.Services.GetRequiredService<IWidgetInstanceService>());
 
             _windowService?.SetInteractionSuppressed(true);
             _dockTools.Closed += (_, _) =>

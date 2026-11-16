@@ -6,6 +6,7 @@
   <ItemGroup>
     <ProjectReference Include="..\OpenBar.Application\OpenBar.Application.csproj" />
     <ProjectReference Include="..\OpenBar.Dock\OpenBar.Dock.csproj" />
+    <ProjectReference Include="..\OpenBar.SystemBridge\OpenBar.SystemBridge.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" />

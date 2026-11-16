@@ -7,6 +7,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using OpenBar.Application.Dock;
 using OpenBar.Domain.Layouts;
+using OpenBar.SystemBridge;
 using Windows.UI.ViewManagement;
 
 namespace OpenBar.Presentation.Dock;
@@ -20,6 +21,7 @@ public sealed partial class DockViewModel : ObservableObject, IDisposable
 {
     private readonly IDockController _controller;
     private readonly DockIconService _icons;
+    private readonly ISystemMetrics _systemMetrics;
     private readonly ILogger<DockViewModel> _logger;
     private readonly DispatcherQueue? _dispatcher;
     private readonly DispatcherQueueTimer? _refreshTimer;
@@ -44,6 +46,8 @@ public sealed partial class DockViewModel : ObservableObject, IDisposable
     private bool _reduceAnimations;
     private bool _hideInFullscreen = true;
     private bool _initialized;
+    private IDisposable? _systemMetricsSubscription;
+    private SystemMetricsSnapshot _systemStatus = SystemMetricsSnapshot.Empty;
     private bool _active;
     private bool _refreshing;
     private bool _suppressReorder;
@@ -53,13 +57,15 @@ public sealed partial class DockViewModel : ObservableObject, IDisposable
     public DockViewModel(
         IDockController controller,
         DockIconService icons,
-        ILogger<DockViewModel> logger)
+        ILogger<DockViewModel> logger,
+        ISystemMetrics? systemMetrics = null)
     {
         ArgumentNullException.ThrowIfNull(controller);
         ArgumentNullException.ThrowIfNull(icons);
 
         _controller = controller;
         _icons = icons;
+        _systemMetrics = systemMetrics ?? NullSystemMetrics.Instance;
         _logger = logger;
         _dispatcher = DispatcherQueue.GetForCurrentThread();
 
@@ -91,6 +97,10 @@ public sealed partial class DockViewModel : ObservableObject, IDisposable
     public event EventHandler? LayoutChanged;
 
     public Func<Task>? AddTestWidget { get; set; }
+
+    public event EventHandler<SystemMetricsSnapshot>? SystemStatusChanged;
+
+    public SystemMetricsSnapshot SystemStatus => _systemStatus;
 
     public DockEdge Position
     {
@@ -216,7 +226,7 @@ public sealed partial class DockViewModel : ObservableObject, IDisposable
         private set => SetProperty(ref _monitorTarget, value);
     }
 
-    public int ItemCount => PinnedItems.Count + RunningItems.Count + 2;
+    public int ItemCount => PinnedItems.Count + RunningItems.Count + 3;
 
     public int PinnedCount => PinnedItems.Count;
 
@@ -252,11 +262,17 @@ public sealed partial class DockViewModel : ObservableObject, IDisposable
         if (active)
         {
             _refreshTimer.Start();
+            _systemMetricsSubscription ??= _systemMetrics.Subscribe(
+                OnSystemMetrics,
+                TimeSpan.FromSeconds(1));
+            OnSystemMetrics(_systemMetrics.Current);
             _ = RefreshSafeAsync();
         }
         else
         {
             _refreshTimer.Stop();
+            _systemMetricsSubscription?.Dispose();
+            _systemMetricsSubscription = null;
         }
     }
 
@@ -413,6 +429,18 @@ public sealed partial class DockViewModel : ObservableObject, IDisposable
 
     private void OnRefreshTimerTick(DispatcherQueueTimer sender, object args)
         => _ = RefreshSafeAsync();
+
+    private void OnSystemMetrics(SystemMetricsSnapshot snapshot)
+    {
+        if (_dispatcher is not null && !_dispatcher.HasThreadAccess)
+        {
+            _ = _dispatcher.TryEnqueue(() => OnSystemMetrics(snapshot));
+            return;
+        }
+
+        _systemStatus = snapshot;
+        SystemStatusChanged?.Invoke(this, snapshot);
+    }
 
     private void ApplyLayout(DockLayout layout)
     {
@@ -615,6 +643,8 @@ public sealed partial class DockViewModel : ObservableObject, IDisposable
         _disposed = true;
         _controller.Changed -= OnControllerChanged;
         PinnedItems.CollectionChanged -= OnPinnedItemsChanged;
+        _systemMetricsSubscription?.Dispose();
+        _systemMetricsSubscription = null;
 
         if (_uiSettings is not null)
         {

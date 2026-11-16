@@ -21,9 +21,9 @@ Working directory: `C:\Users\rodri\OneDrive\Desktop\dock-win` (git repository in
 Commands are run from the repo root. `Directory.Build.props` defaults `Platform` to `x64` when no platform is supplied (WinUI + `WindowsAppSDKSelfContained` requires a concrete Windows architecture), so the plain CLI commands below work.
 
 ```powershell
-dotnet restore OpenBar.sln            # SUCCESS (all 17 projects)
+dotnet restore OpenBar.sln            # SUCCESS (all 19 projects)
 dotnet build OpenBar.sln -c Debug     # SUCCESS: 0 warnings, 0 errors
-dotnet test OpenBar.sln -c Debug      # SUCCESS: 238/238 tests passed, 0 failed
+dotnet test OpenBar.sln -c Debug      # SUCCESS: 254/254 tests passed, 0 failed
 ```
 
 Explicit platform is still supported: `-p:Platform=x64` (default for CLI); `ARM64`/`x86` are declared but not yet validated.
@@ -194,6 +194,35 @@ The runtime reuses `IWidgetInstanceService` from Foundation 0.2. At startup `Wid
 
 > Fullscreen testing used Chrome F11, not a fullscreen game. The shell exclusive-state path is implemented but not hardware-validated with a game. Mixed-DPI behavior on two displays remains pending.
 
+## 2.6 System Bridge workflow (Foundation 0.6)
+
+### Creating and configuring widgets
+- Open the gear window and use **Añadir CPU** / **Añadir memoria** (automation ids `AddCpuWidget` / `AddMemoryWidget`). Each creates a normal persisted `WidgetInstances` row and an independent window.
+- The CPU window shows `Midiendo…` until the second cumulative sample exists, then a real 0-100%. Memory is available immediately.
+- In **Widgets del sistema** choose an instance (`SystemWidgetInstance`), set the interval 1-10 s (`SystemWidgetInterval`), choose the memory unit for `openbar.memory` (`SystemWidgetUnit`) and press **Guardar configuración del widget** (`SaveSystemWidgetSettings`).
+- Updates go through `IWidgetRuntime.UpdateSettingsAsync`, so the open widget reschedules immediately through `IWidgetSettingsConsumer` and the JSON is persisted without restarting.
+
+### Shared service and native APIs
+- `SystemMetricsService.RefreshAsync` caches one sample for 350 ms and serializes concurrent refreshes with a semaphore; widgets and the dock chip therefore share a single `GetSystemTimes`/`GlobalMemoryStatusEx` capture.
+- `Subscribe` runs one shared `PeriodicTimer` only while subscribers exist; the dock chip subscribes at 1 s while the dock is active and disposes on hide.
+- CPU is `(1 - idleDelta / (kernelDelta + userDelta)) * 100`; the first capture has no delta and reports unavailable. Memory derives used/percentage from `ullTotalPhys` and `ullAvailPhys`.
+
+### Runtime evidence (2026-11-16)
+| Check | Observed result |
+|---|---|
+| CPU widget | Real values 18-23% after the first sample |
+| Memory widget | 87-90%, `13.3 / 15.4 GB`; unit switch to MB showed `13772.3 / 15741.3 MB` |
+| Dock chip | `C18 / M90` with tooltip; tapping opens settings |
+| Persistence | Memory row `{"intervalSeconds":3,"unit":"gb"}`; reopened with the same values after restart |
+| Close window | Widget stopped; CPU cost fell from 562 ms to 125 ms per 10 s |
+| Vertical dock | `Left` produced `90x624`; chip remained visible; `Bottom` restored `624x90` |
+| Restart | Both enabled widgets recovered and resumed updating |
+| Database | `PRAGMA quick_check` -> `ok`; no lock after exit |
+| Idle cost (widgets+chip) | 562 ms CPU / 10 s, 89.9 MB private, 224.9 MB working set |
+| Idle cost (chip only) | 125 ms CPU / 10 s, 90.2 MB private |
+
+> The 10 s interval run measured 688 ms / 10 s, so the two extra WinUI windows dominate cost; polling was not the driver. Mixed-DPI, exclusive-game fullscreen and monitor-disconnect validation remain BLOCKED.
+
 ## 3. Fixes applied during validation
 
 1. **Broken solution file for CLI restore**
@@ -266,12 +295,12 @@ Do not create unnecessary files, duplicate implementations, or use fake/placehol
 - Widgets communicate via contracts/events; faulty widget must not crash app.
 - No plaintext credentials; use Credential Manager/DPAPI.
 
-## 6. Remaining work after Foundation 0.5
-Verified in this stage: toolchain, restore/build/tests, single-instance startup, tray integration, controlled shutdown, SQLite/EF Core persistence, widget runtime, and a polished dock with themes, proximity magnification, drag reorder, four edges, auto-hide, fullscreen awareness, monitor/DPI selection, settings and restart persistence. Still **not implemented** (do not mark complete):
+## 6. Remaining work after Foundation 0.6
+Verified in this stage: toolchain, restore/build/tests, single-instance startup, tray integration, controlled shutdown, SQLite/EF Core persistence, widget runtime, a polished dock with themes, proximity magnification, drag reorder, four edges, auto-hide, fullscreen awareness, monitor/DPI selection, settings, restart persistence, shared CPU/RAM System Bridge, CPU/memory widgets and the dock status chip. Still **not implemented** (do not mark complete):
 1. Mixed-DPI validation across two displays and per-monitor dock layouts.
 2. Dock drag/resize/snapping, floating/wide modes and fullscreen auto-hide tuning for games.
 3. Full MSIX/AUMID application discovery beyond Start Menu shortcuts and explicit paths.
-4. CPU/RAM widget, System Bridge polling and additional official widgets.
+4. Additional System Bridge sources (battery, storage, network, temperature) and per-core/per-process metrics.
 5. Windows autostart (explicitly out of scope for this phase).
 6. Final brand artwork and the complete Liquid Glass design system.
 7. Credential Manager/DPAPI secret store for integrations (only the "no secrets in SQLite" policy exists).

@@ -5,6 +5,7 @@
   <ItemGroup>
     <ProjectReference Include="..\OpenBar.Application\OpenBar.Application.csproj" />
     <ProjectReference Include="..\OpenBar.Widgets.Abstractions\OpenBar.Widgets.Abstractions.csproj" />
+    <ProjectReference Include="..\OpenBar.SystemBridge\OpenBar.SystemBridge.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />

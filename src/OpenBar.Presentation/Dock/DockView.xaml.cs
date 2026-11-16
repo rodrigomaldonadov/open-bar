@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Media.Animation;
 using OpenBar.Application.Dock;
 using OpenBar.Dock;
 using OpenBar.Domain.Layouts;
+using OpenBar.SystemBridge;
 using Windows.Foundation;
 
 namespace OpenBar.Presentation.Dock;
@@ -39,6 +40,8 @@ public sealed partial class DockView : UserControl
         InitializeComponent();
         DataContext = viewModel;
         Loaded += OnLoaded;
+        ViewModel.SystemStatusChanged += OnSystemStatusChanged;
+        SystemStatus.SetSnapshot(viewModel.SystemStatus);
 
         // ListView handles pointer events internally; listen to handled events
         // too so the dock can implement its own reorder gesture.
@@ -193,6 +196,23 @@ public sealed partial class DockView : UserControl
 
     private async void OnSettingsClick(object sender, RoutedEventArgs e)
         => await OpenToolsSafeAsync();
+
+    private async void OnSystemStatusTapped(object sender, TappedRoutedEventArgs e)
+    {
+        e.Handled = true;
+        await OpenToolsSafeAsync();
+    }
+
+    private void OnSystemStatusChanged(object? sender, SystemMetricsSnapshot snapshot)
+    {
+        if (SystemStatus.DispatcherQueue.HasThreadAccess)
+        {
+            SystemStatus.SetSnapshot(snapshot);
+            return;
+        }
+
+        _ = SystemStatus.DispatcherQueue.TryEnqueue(() => SystemStatus.SetSnapshot(snapshot));
+    }
 
     private void OnDockPointerMoved(object sender, PointerRoutedEventArgs e)
     {

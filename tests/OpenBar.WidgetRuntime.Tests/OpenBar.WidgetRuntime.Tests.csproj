@@ -9,6 +9,8 @@
     <ProjectReference Include="..\..\src\OpenBar.Application\OpenBar.Application.csproj" />
     <ProjectReference Include="..\..\src\OpenBar.Infrastructure\OpenBar.Infrastructure.csproj" />
     <ProjectReference Include="..\..\modules\System\OpenBar.Widgets.Clock\OpenBar.Widgets.Clock.csproj" />
+    <ProjectReference Include="..\..\modules\System\OpenBar.Widgets.System\OpenBar.Widgets.System.csproj" />
+    <ProjectReference Include="..\..\src\OpenBar.SystemBridge\OpenBar.SystemBridge.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" />

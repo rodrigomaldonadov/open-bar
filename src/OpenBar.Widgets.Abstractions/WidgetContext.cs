@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using OpenBar.SystemBridge;
 
 namespace OpenBar.Widgets.Abstractions;
 
@@ -21,6 +22,12 @@ public sealed class WidgetContext
 
     /// <summary>Per-instance scheduler owned by the runtime.</summary>
     public required IWidgetScheduler Scheduler { get; init; }
+
+    /// <summary>
+    /// Shared System Bridge measurements. The default no-op implementation is
+    /// used in isolated tests; the runtime supplies the real service.
+    /// </summary>
+    public ISystemMetrics Metrics { get; init; } = NullSystemMetrics.Instance;
 
     public WidgetSettings Settings
     {

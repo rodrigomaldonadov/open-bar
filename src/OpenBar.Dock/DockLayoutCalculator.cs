@@ -25,7 +25,8 @@ public static class DockLayoutCalculator
         DockLayout layout,
         int pinnedCount,
         int runningCount,
-        bool includeAddTile = true)
+        bool includeAddTile = true,
+        bool includeSystemStatus = true)
     {
         ArgumentNullException.ThrowIfNull(layout);
 
@@ -33,6 +34,7 @@ public static class DockLayoutCalculator
         var spacing = Math.Clamp(layout.Spacing, 0, 40);
 
         var itemCount = Math.Max(0, pinnedCount) + Math.Max(0, runningCount) + (includeAddTile ? 2 : 0);
+        itemCount += includeSystemStatus ? 1 : 0;
         itemCount = Math.Max(1, itemCount);
 
         var length = itemCount * iconSize + Math.Max(0, itemCount - 1) * spacing + 2 * Padding;

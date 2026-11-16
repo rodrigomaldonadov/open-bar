@@ -24,6 +24,8 @@
     <ProjectReference Include="..\OpenBar.WidgetRuntime\OpenBar.WidgetRuntime.csproj" />
     <ProjectReference Include="..\OpenBar.Widgets.Abstractions\OpenBar.Widgets.Abstractions.csproj" />
     <ProjectReference Include="..\..\modules\System\OpenBar.Widgets.Clock\OpenBar.Widgets.Clock.csproj" />
+    <ProjectReference Include="..\..\modules\System\OpenBar.Widgets.System\OpenBar.Widgets.System.csproj" />
+    <ProjectReference Include="..\OpenBar.SystemBridge\OpenBar.SystemBridge.csproj" />
     <ProjectReference Include="..\OpenBar.Integrations\OpenBar.Integrations.csproj" />
     <ProjectReference Include="..\OpenBar.Automation\OpenBar.Automation.csproj" />
   </ItemGroup>

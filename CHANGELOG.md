@@ -1,6 +1,34 @@
 # Changelog
 
-## 0.5.0 — Visual polish and desktop experience (2026-11-16)
+## 0.6.0 - System Bridge and native widgets (2026-11-16)
+
+### Added
+- `OpenBar.SystemBridge`: shared `ISystemMetrics` contracts, `SystemMetricsSnapshot`, configurable `SystemMetricsOptions`, a native-source abstraction and a `NullSystemMetrics` fallback.
+- Windows source for CPU (`GetSystemTimes`, idle/kernel/user deltas) and physical memory (`GlobalMemoryStatusEx`: total, available, used, percentage).
+- Demand-driven `SystemMetricsService`: cache window plus single-flight refresh, shared `PeriodicTimer` subscription loop only while subscribers exist, cancellation, exception isolation and correct disposal.
+- Official `openbar.cpu` widget with a compact activity card, configurable 1-10 s interval and honest unavailable state on the first sample.
+- Official `openbar.memory` widget showing used/total RAM and percentage, with `auto`/`MB`/`GB` units and a configurable interval.
+- `WidgetContext.Metrics`, supplied by the runtime, so widgets consume the shared bridge instead of native APIs or their own timers.
+- Compact CPU/RAM chip at the end of the dock, visible on all four edges, with a tooltip and a shortcut to settings.
+- System-widget settings in the tools window: select a CPU/memory instance, change its interval and memory unit, and persist through `IWidgetInstanceService`/`IWidgetRuntime.UpdateSettingsAsync`.
+
+### Changed
+- `DockMetrics`/`DockViewModel` include the system chip in item counts and geometry.
+- The tools window accepts `IWidgetInstanceService` to read and write widget settings without accessing the database directly.
+- No new migration: system widget settings live in the existing `WidgetInstances.SettingsJson`.
+
+### Verified
+- `dotnet build OpenBar.sln -c Debug` -> 0 warnings, 0 errors (19 projects).
+- `dotnet test OpenBar.sln -c Debug` -> 254 passed, 0 failed, 0 skipped (Domain 2, Application 47, Infrastructure 86, Dock 43, WidgetRuntime 75, Integration 1).
+- `dotnet list OpenBar.sln package --vulnerable --include-transitive` -> no vulnerable packages.
+- Runtime: CPU showed real values (18-23%), memory showed 87-90% and 13.3-13.8 / 15.4 GB; the dock chip showed `C18 / M90`.
+- Runtime: changing the memory widget to `2 s`/`MB` updated the open widget live to `13772.3 / 15741.3 MB`; restoring `3 s`/`GB` persisted `{"intervalSeconds":3,"unit":"gb"}` and survived a restart.
+- Runtime: closing both widget windows stopped their schedules (CPU cost fell from 562 ms to 125 ms per 10 s); restart recovered both widgets and the dock chip.
+- Runtime: moving the dock to the left edge produced a `90x624` vertical bar with the chip still visible; restoring `Bottom` returned `624x90`.
+- Measured idle cost while visible with CPU+memory widgets and chip: **562 ms CPU / 10 s** (5.62% of one core), **89.9 MB private memory**, 224.9 MB working set. With widget windows closed (chip only): **125 ms / 10 s**, 90.2 MB private.
+- Foundation 0.5 pending validations: Chrome F11 fullscreen, themes, magnification, auto-hide delays, monitor move and restart persistence remain verified. Mixed-DPI, exclusive-game fullscreen and monitor-disconnect validation remain BLOCKED.
+
+## 0.5.0 - Visual polish and desktop experience (2026-11-16)
 
 ### Added
 - Light, dark and system-adaptive dock themes with theme dictionaries, glass tint, borders, hover and running-dot colors.

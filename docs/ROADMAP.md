@@ -121,11 +121,41 @@ Goal: refine the real dock into a fluid, theme-aware desktop experience without 
 - Runtime: ClockWidget and pinned apps survived restart; tray icon and single-instance behavior remained intact.
 - Measured idle cost while visible: **156 ms CPU / 10 s**, **86.3 MB private memory**, 217 MB working set.
 
-## Near-term (post 0.5)
-- Validate mixed-DPI multi-monitor setups and per-monitor dock placement.
+## Foundation 0.6 - System Bridge & Native Widgets (complete 2026-11-16)
+Goal: reusable, demand-driven Windows system metrics plus official CPU/memory widgets that reuse the existing runtime and dock.
+
+- [x] **System Bridge contracts**: `ISystemMetrics`, `SystemMetricsSnapshot`, `ISystemMetricsSource`, `SystemMetricsOptions` and `NullSystemMetrics`, isolated from WinUI and replaceable in tests. *(VERIFIED - unit tests)*
+- [x] **Native sources**: CPU from `GetSystemTimes` idle/kernel/user deltas and physical memory from `GlobalMemoryStatusEx`; values clamped to 0-100 and 64-bit byte counts. *(VERIFIED - runtime + tests)*
+- [x] **Shared polling**: one cached/single-flight sample reused by all consumers, one shared subscription loop only while subscribers exist, interval clamping (250 ms-10 s), cancellation and exception isolation. *(VERIFIED - unit tests + runtime)*
+- [x] **Runtime integration**: `WidgetContext.Metrics` supplied by `WidgetRuntimeService`; widgets schedule through `IWidgetScheduler` and never query Win32 or create timers. *(VERIFIED - tests)*
+- [x] **CPU widget** (`openbar.cpu`): real percentage, activity bar, loading/unavailable state, 1-10 s interval, persisted settings. *(VERIFIED - runtime)*
+- [x] **Memory widget** (`openbar.memory`): used/total RAM, percentage, activity bar, `auto`/`MB`/`GB` units, 1-10 s interval, persisted settings. *(VERIFIED - runtime + DB)*
+- [x] **Dock integration**: compact CPU/RAM chip on all four orientations, visible only while the dock is active, read-only, does not replace independent widget windows. *(VERIFIED - runtime + geometry tests)*
+- [x] **Settings**: tools window lists CPU/memory instances and updates interval/unit through the runtime. *(VERIFIED - UIA + SQLite)*
+- [x] **Performance**: measured with widgets and without; polling frequency has negligible impact compared with the two extra WinUI windows. *(VERIFIED - measurements below)*
+- [x] **Compatibility**: clock widget, pinned/running apps, themes, auto-hide, fullscreen, tray, single instance and persistence still work. *(VERIFIED - full suite + runtime)*
+
+### Verified Foundation 0.6 evidence (2026-11-16)
+- `dotnet build OpenBar.sln -c Debug` -> **0 warnings, 0 errors** (19 projects).
+- `dotnet test OpenBar.sln -c Debug` -> **254 passed / 0 failed / 0 skipped** (Domain 2, Application 47, Infrastructure 86, Dock 43, WidgetRuntime 75, Integration 1).
+- `dotnet list OpenBar.sln package --vulnerable --include-transitive` -> no vulnerable packages.
+- Runtime: `openbar.cpu` showed 18-23% and `openbar.memory` showed 87-90%, `13.3-13.8 / 15.4 GB`; the dock chip showed `C18 / M90`.
+- Runtime: settings `2 s` + `MB` changed the live memory widget to `13772.3 / 15741.3 MB`; `3 s` + `GB` persisted as `{"intervalSeconds":3,"unit":"gb"}` and reopened on restart.
+- Runtime: closing both widget windows stopped their schedules (CPU 562 -> 125 ms per 10 s); restart recovered both instances.
+- Runtime: moving the dock to the left edge produced a `90x624` vertical bar with the chip visible; restoring `Bottom` returned `624x90`.
+- Runtime: database `PRAGMA quick_check` -> `ok`; no lock remained after exit and the database opened read-write.
+- Idle with CPU+memory widgets and chip: **562 ms CPU / 10 s**, **89.9 MB private**, 224.9 MB working set. Chip only: **125 ms / 10 s**, 90.2 MB private.
+- At 10 s intervals the two widgets measured 688 ms / 10 s, confirming the cost is dominated by WinUI window composition, not polling.
+
+### Foundation 0.5 carry-over validation
+- VERIFIED: themes, proximity magnification, auto-hide delays, Chrome F11 fullscreen hide/restore, primary<->secondary monitor move, restart persistence, tray/single-instance.
+- BLOCKED: mixed-DPI across two displays, exclusive fullscreen game, monitor disconnect/repositioning with hardware change, isolated measurement of fade/reduced-motion visuals.
+
+## Near-term (post 0.6)
+- Validate mixed-DPI multi-monitor setups and per-monitor dock layouts.
 - Dock drag/resize/snapping, floating/wide modes and auto-hide fullscreen refinements.
 - Full MSIX/AUMID application picker and arbitrary Start Menu/AppsFolder pinning.
-- System Bridge polling (CPU/RAM) and additional official widgets.
+- Additional official widgets and richer System Bridge sources (battery, storage, network, temperature where hardware allows).
 - Final brand artwork and the complete Liquid Glass design system.
 - Credential Manager/DPAPI secret store for integrations.
 - Out-of-process third-party plugin host + IPC (ALC is not a security boundary).

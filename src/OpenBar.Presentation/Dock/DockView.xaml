@@ -182,6 +182,14 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
+                    <dock:SystemStatusView
+                        x:Name="SystemStatus"
+                        Width="48"
+                        Height="48"
+                        Margin="10,0,0,0"
+                        Tapped="OnSystemStatusTapped"
+                        ToolTipService.ToolTip="Estado del sistema" />
+
                     <Button
                         x:Name="SettingsButton"
                         Click="OnSettingsClick"

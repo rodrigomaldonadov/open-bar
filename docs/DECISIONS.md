@@ -408,3 +408,44 @@
   - Persist a `ReduceAnimations` override. The effective duration is zero when either the system preference is off or the override is enabled.
   - The same effective duration drives item magnification and dock fade/scale transitions.
 - **Consequences:** Motion can be reduced without changing layout; the override is visible in settings and testable through the persisted field.
+
+## ADR-0044: One shared System Bridge with a cache and single-flight refresh
+- **Date:** 2026-11-16
+- **Status:** Accepted
+- **Context:** CPU and memory must be reusable by several widgets and the dock without duplicate native calls or a service per widget.
+- **Decision:**
+  - Put contracts and the shared service in `OpenBar.SystemBridge`; keep the Win32 source behind `ISystemMetricsSource` in Infrastructure.
+  - Cache captures for 350 ms and serialize refreshes with a semaphore so concurrent consumers share one sample.
+  - Keep the previous CPU sample inside the service so a delta can be computed; return CPU unavailable on the first capture instead of inventing a value.
+  - Expose `Subscribe` with a single shared `PeriodicTimer` that only runs while subscribers exist.
+- **Consequences:** Widgets remain simple consumers, native cost is bounded, and tests can replace the source. A metric added later must extend the same snapshot/contract rather than create a parallel service.
+
+## ADR-0045: System widgets poll through the existing runtime scheduler
+- **Date:** 2026-11-16
+- **Status:** Accepted
+- **Context:** Foundation 0.3 already owns timer lifecycle, minimum intervals, non-overlap and disposal per widget instance.
+- **Decision:**
+  - Expose the shared service as `WidgetContext.Metrics`; do not let widgets reference Win32 or instantiate timers.
+  - Each widget schedules `RefreshAsync` via `IWidgetScheduler`; the shared cache/single-flight layer deduplicates concurrent calls.
+  - Settings changes reschedule through `IWidgetSettingsConsumer`, and closing a window stops the instance and its schedule while preserving the row.
+- **Consequences:** No second scheduling mechanism and no parallel timers. The dock chip is the only extra consumer and uses the subscription API while active.
+
+## ADR-0046: A read-only dock status chip, not an embedded widget host
+- **Date:** 2026-11-16
+- **Status:** Accepted
+- **Context:** A dock-integrated surface should improve visibility without breaking independent widget windows, lifecycle, persistence or interactions.
+- **Decision:**
+  - Add a compact `SystemStatusView` chip to the dock item flow, included in geometry for all four edges.
+  - Keep it read-only (CPU/RAM summary + tooltip) and open the settings window on tap.
+  - Keep `openbar.cpu`/`openbar.memory` as normal runtime instances with their own windows and `SettingsJson`; no new persistence schema.
+- **Consequences:** Users get at-a-glance metrics on the dock while the existing widget model stays intact. A fully interactive embedded surface would require a broader window/composition redesign and is deferred.
+
+## ADR-0047: System widget settings reuse `WidgetInstances.SettingsJson`
+- **Date:** 2026-11-16
+- **Status:** Accepted
+- **Context:** Interval and memory-unit choices are small per-instance options, and Foundation 0.3 already defines JSON settings with schema versions.
+- **Decision:**
+  - Store `intervalSeconds` and optional `unit` inside the existing settings JSON.
+  - Update through `IWidgetRuntime.UpdateSettingsAsync` so validation, persistence and `IWidgetSettingsConsumer` stay centralized.
+  - Expose the same values in `DockToolsWindow` through `IWidgetInstanceService`.
+- **Consequences:** No migration or new table; settings survive restart and remain independent per instance. Invalid JSON falls back to defaults with a warning.

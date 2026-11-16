@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using OpenBar.Application.Persistence;
 using OpenBar.Application.Widgets;
 using OpenBar.Domain.Widgets;
+using OpenBar.SystemBridge;
 using OpenBar.Widgets.Abstractions;
 
 namespace OpenBar.WidgetRuntime;
@@ -19,6 +20,7 @@ public sealed partial class WidgetRuntimeService : IWidgetRuntime, IAsyncDisposa
     private readonly IWidgetRegistry _registry;
     private readonly IWidgetWindowService _windows;
     private readonly WidgetScheduler _scheduler;
+    private readonly ISystemMetrics _metrics;
     private readonly ILogger<WidgetRuntimeService> _logger;
     private readonly ConcurrentDictionary<Guid, WidgetInstanceRuntime> _entries = new();
     private readonly SemaphoreSlim _startGate = new(1, 1);
@@ -31,7 +33,8 @@ public sealed partial class WidgetRuntimeService : IWidgetRuntime, IAsyncDisposa
         IWidgetRegistry registry,
         IWidgetWindowService windows,
         WidgetScheduler scheduler,
-        ILogger<WidgetRuntimeService> logger)
+        ILogger<WidgetRuntimeService> logger,
+        ISystemMetrics? metrics = null)
     {
         ArgumentNullException.ThrowIfNull(instances);
         ArgumentNullException.ThrowIfNull(registry);
@@ -43,6 +46,7 @@ public sealed partial class WidgetRuntimeService : IWidgetRuntime, IAsyncDisposa
         _windows = windows;
         _scheduler = scheduler;
         _logger = logger;
+        _metrics = metrics ?? NullSystemMetrics.Instance;
 
         _windows.CloseRequested += OnWindowCloseRequested;
     }
@@ -88,7 +92,7 @@ public sealed partial class WidgetRuntimeService : IWidgetRuntime, IAsyncDisposa
                 }
 
                 var definition = _registry.Find(entity.WidgetId);
-                var entry = new WidgetInstanceRuntime(definition, entity, _scheduler, _logger);
+                var entry = new WidgetInstanceRuntime(definition, entity, _scheduler, _metrics, _logger);
                 _entries[entity.Id] = entry;
 
                 if (definition is null)
@@ -211,7 +215,7 @@ public sealed partial class WidgetRuntimeService : IWidgetRuntime, IAsyncDisposa
                 ex);
         }
 
-        var entry = new WidgetInstanceRuntime(definition, entity, _scheduler, _logger);
+        var entry = new WidgetInstanceRuntime(definition, entity, _scheduler, _metrics, _logger);
         _entries[entity.Id] = entry;
 
         try

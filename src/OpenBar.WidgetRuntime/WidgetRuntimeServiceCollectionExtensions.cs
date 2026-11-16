@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using OpenBar.SystemBridge;
 
 namespace OpenBar.WidgetRuntime;
 
@@ -21,6 +22,7 @@ public static class WidgetRuntimeServiceCollectionExtensions
         configureScheduler?.Invoke(schedulerOptions);
 
         services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<ISystemMetrics>(NullSystemMetrics.Instance);
         services.AddSingleton(schedulerOptions);
         services.AddSingleton<WidgetScheduler>();
         services.AddSingleton<IWidgetRegistry, WidgetRegistry>();

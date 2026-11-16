@@ -15,6 +15,7 @@ internal sealed partial class WidgetInstanceRuntime : IAsyncDisposable
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly WidgetDefinition? _definition;
     private readonly WidgetScheduler _scheduler;
+    private readonly OpenBar.SystemBridge.ISystemMetrics _metrics;
     private readonly ILogger _logger;
 
     private WidgetInstance _entity;
@@ -28,11 +29,13 @@ internal sealed partial class WidgetInstanceRuntime : IAsyncDisposable
         WidgetDefinition? definition,
         WidgetInstance entity,
         WidgetScheduler scheduler,
+        OpenBar.SystemBridge.ISystemMetrics metrics,
         ILogger logger)
     {
         _definition = definition;
         _entity = entity;
         _scheduler = scheduler;
+        _metrics = metrics;
         _logger = logger;
         _state = definition is null ? WidgetInstanceState.Unavailable : WidgetInstanceState.Created;
     }
@@ -110,6 +113,7 @@ internal sealed partial class WidgetInstanceRuntime : IAsyncDisposable
                     InstanceName = InstanceName,
                     Logger = _logger,
                     Scheduler = _schedulerScope,
+                    Metrics = _metrics,
                     Settings = ParseSettings()
                 };
 

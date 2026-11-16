@@ -4,11 +4,15 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using OpenBar.Application.Dock;
+using OpenBar.Application.Persistence;
 using OpenBar.Domain.Dock;
 using OpenBar.Domain.Layouts;
 using OpenBar.Presentation.Dock;
+using OpenBar.SystemBridge;
 using OpenBar.WidgetRuntime;
 using OpenBar.Widgets.Clock;
+using OpenBar.Widgets.System;
+using System.Text.Json;
 using Windows.Graphics;
 
 namespace OpenBar.App;
@@ -21,6 +25,7 @@ public sealed partial class DockToolsWindow : Window
 {
     private readonly DockViewModel _viewModel;
     private readonly IWidgetRuntime _widgets;
+    private readonly IWidgetInstanceService _widgetStore;
     private readonly ListView _applications;
     private readonly TextBox _pathBox;
     private readonly ComboBox _position;
@@ -37,15 +42,23 @@ public sealed partial class DockToolsWindow : Window
     private readonly ToggleSwitch _autoHide;
     private readonly ToggleSwitch _reduceAnimations;
     private readonly ToggleSwitch _hideInFullscreen;
+    private readonly ComboBox _widgetInstances;
+    private readonly NumberBox _widgetInterval;
+    private readonly ComboBox _widgetUnit;
     private readonly TextBlock _status;
 
-    public DockToolsWindow(DockViewModel viewModel, IWidgetRuntime widgets)
+    public DockToolsWindow(
+        DockViewModel viewModel,
+        IWidgetRuntime widgets,
+        IWidgetInstanceService widgetStore)
     {
         ArgumentNullException.ThrowIfNull(viewModel);
         ArgumentNullException.ThrowIfNull(widgets);
+        ArgumentNullException.ThrowIfNull(widgetStore);
 
         _viewModel = viewModel;
         _widgets = widgets;
+        _widgetStore = widgetStore;
 
         Title = "OpenBar · Ajustes del dock";
         ExtendsContentIntoTitleBar = false;
@@ -96,6 +109,29 @@ public sealed partial class DockToolsWindow : Window
             IsOn = _viewModel.HideInFullscreen
         };
 
+        _widgetInstances = new ComboBox { Header = "Instancia del widget", MinWidth = 300 };
+        AutomationProperties.SetAutomationId(_widgetInstances, "SystemWidgetInstance");
+        _widgetInstances.SelectionChanged += (_, _) => LoadSelectedWidgetSettings();
+
+        _widgetInterval = new NumberBox
+        {
+            Header = "Intervalo de actualización (segundos)",
+            Minimum = 1,
+            Maximum = 10,
+            SmallChange = 1,
+            LargeChange = 1,
+            Value = 1,
+            MinWidth = 220
+        };
+        AutomationProperties.SetAutomationId(_widgetInterval, "SystemWidgetInterval");
+
+        _widgetUnit = new ComboBox { Header = "Unidad de memoria", MinWidth = 220 };
+        AutomationProperties.SetAutomationId(_widgetUnit, "SystemWidgetUnit");
+        _widgetUnit.Items.Add(new ComboBoxItem { Content = "Automática", Tag = "auto" });
+        _widgetUnit.Items.Add(new ComboBoxItem { Content = "MB", Tag = "mb" });
+        _widgetUnit.Items.Add(new ComboBoxItem { Content = "GB", Tag = "gb" });
+        _widgetUnit.SelectedIndex = 0;
+
         _status = new TextBlock { TextWrapping = TextWrapping.Wrap };
 
         var addButton = new Button { Content = "Añadir seleccionada" };
@@ -120,6 +156,18 @@ public sealed partial class DockToolsWindow : Window
         var clockButton = new Button { Content = "Añadir reloj de prueba" };
         clockButton.Click += async (_, _) => await AddClockAsync();
         AutomationProperties.SetAutomationId(clockButton, "AddClockWidget");
+
+        var cpuButton = new Button { Content = "Añadir CPU" };
+        cpuButton.Click += async (_, _) => await AddSystemWidgetAsync(CpuWidgetDefinition.WidgetId);
+        AutomationProperties.SetAutomationId(cpuButton, "AddCpuWidget");
+
+        var memoryButton = new Button { Content = "Añadir memoria" };
+        memoryButton.Click += async (_, _) => await AddSystemWidgetAsync(MemoryWidgetDefinition.WidgetId);
+        AutomationProperties.SetAutomationId(memoryButton, "AddMemoryWidget");
+
+        var saveWidgetButton = new Button { Content = "Guardar configuración del widget" };
+        saveWidgetButton.Click += async (_, _) => await SaveWidgetSettingsAsync();
+        AutomationProperties.SetAutomationId(saveWidgetButton, "SaveSystemWidgetSettings");
 
         var closeButton = new Button { Content = "Cerrar" };
         closeButton.Click += (_, _) => Close();
@@ -165,6 +213,13 @@ public sealed partial class DockToolsWindow : Window
 
         panel.Children.Add(Header("Widgets"));
         panel.Children.Add(clockButton);
+        panel.Children.Add(cpuButton);
+        panel.Children.Add(memoryButton);
+        panel.Children.Add(Header("Widgets del sistema"));
+        panel.Children.Add(_widgetInstances);
+        panel.Children.Add(_widgetInterval);
+        panel.Children.Add(_widgetUnit);
+        panel.Children.Add(saveWidgetButton);
         panel.Children.Add(closeButton);
         panel.Children.Add(_status);
 
@@ -189,6 +244,7 @@ public sealed partial class DockToolsWindow : Window
             workArea.Y + Math.Max(0, (workArea.Height - 900) / 2)));
 
         _ = LoadApplicationsAsync();
+        RefreshWidgetInstances();
     }
 
     private void LoadMonitors()
@@ -247,6 +303,105 @@ public sealed partial class DockToolsWindow : Window
         catch (Exception ex)
         {
             _status.Text = $"No se pudo añadir: {ex.Message}";
+        }
+    }
+
+    private void RefreshWidgetInstances()
+    {
+        var previous = (_widgetInstances.SelectedItem as ComboBoxItem)?.Tag as WidgetInstanceInfo;
+        _widgetInstances.Items.Clear();
+
+        foreach (var info in _widgets.GetInstances()
+                     .Where(info => info.WidgetId is CpuWidgetDefinition.WidgetId or MemoryWidgetDefinition.WidgetId)
+                     .OrderBy(info => info.WidgetId, StringComparer.Ordinal)
+                     .ThenBy(info => info.InstanceName, StringComparer.Ordinal))
+        {
+            var item = new ComboBoxItem
+            {
+                Content = $"{info.InstanceName} · {info.WidgetId}",
+                Tag = info
+            };
+
+            _widgetInstances.Items.Add(item);
+
+            if (previous?.Id == info.Id)
+            {
+                _widgetInstances.SelectedItem = item;
+            }
+        }
+
+        if (_widgetInstances.SelectedItem is null && _widgetInstances.Items.Count > 0)
+        {
+            _widgetInstances.SelectedIndex = 0;
+        }
+    }
+
+    private async void LoadSelectedWidgetSettings()
+    {
+        if ((_widgetInstances.SelectedItem as ComboBoxItem)?.Tag is not WidgetInstanceInfo info)
+        {
+            return;
+        }
+
+        try
+        {
+            var entity = await _widgetStore.GetAsync(info.Id);
+            if (entity is null)
+            {
+                return;
+            }
+
+            using var document = JsonDocument.Parse(entity.SettingsJson);
+            var root = document.RootElement;
+            var interval = root.TryGetProperty("intervalSeconds", out var intervalElement)
+                ? intervalElement.GetInt32()
+                : info.WidgetId == CpuWidgetDefinition.WidgetId ? 1 : 2;
+
+            _widgetInterval.Value = Math.Clamp(interval, 1, 10);
+            var unit = root.TryGetProperty("unit", out var unitElement)
+                ? unitElement.GetString() ?? "auto"
+                : "auto";
+
+            _widgetUnit.SelectedIndex = unit.ToLowerInvariant() switch
+            {
+                "mb" => 1,
+                "gb" => 2,
+                _ => 0
+            };
+
+            _widgetUnit.IsEnabled = info.WidgetId == MemoryWidgetDefinition.WidgetId;
+            _widgetUnit.Visibility = info.WidgetId == MemoryWidgetDefinition.WidgetId
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+        catch (Exception ex)
+        {
+            _status.Text = $"No se pudo leer la configuración del widget: {ex.Message}";
+        }
+    }
+
+    private async Task SaveWidgetSettingsAsync()
+    {
+        if ((_widgetInstances.SelectedItem as ComboBoxItem)?.Tag is not WidgetInstanceInfo info)
+        {
+            _status.Text = "Selecciona un widget del sistema.";
+            return;
+        }
+
+        var interval = (int)Math.Clamp(Math.Round(_widgetInterval.Value), 1, 10);
+        var unit = (_widgetUnit.SelectedItem as ComboBoxItem)?.Tag as string ?? "auto";
+        var json = info.WidgetId == CpuWidgetDefinition.WidgetId
+            ? JsonSerializer.Serialize(new { intervalSeconds = interval })
+            : JsonSerializer.Serialize(new { intervalSeconds = interval, unit });
+
+        try
+        {
+            await _widgets.UpdateSettingsAsync(info.Id, json);
+            _status.Text = $"Configuración guardada para {info.InstanceName}.";
+        }
+        catch (Exception ex)
+        {
+            _status.Text = $"No se pudo guardar el widget: {ex.Message}";
         }
     }
 
@@ -324,6 +479,20 @@ public sealed partial class DockToolsWindow : Window
         catch (Exception ex)
         {
             _status.Text = $"No se pudo crear el reloj: {ex.Message}";
+        }
+    }
+
+    private async Task AddSystemWidgetAsync(string widgetId)
+    {
+        try
+        {
+            var info = await _widgets.CreateAsync(widgetId);
+            _status.Text = $"Widget creado: {info.InstanceName}";
+            RefreshWidgetInstances();
+        }
+        catch (Exception ex)
+        {
+            _status.Text = $"No se pudo crear el widget: {ex.Message}";
         }
     }
 

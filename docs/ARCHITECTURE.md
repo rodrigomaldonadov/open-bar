@@ -1,9 +1,9 @@
 # OpenBar — Architecture
 
 ## Status
-- Phase: **Foundation 0.5 (Visual Polish & Desktop Experience)**
+- Phase: **Foundation 0.6 (System Bridge & Native Widgets)**
 - Date: 2026-11-16
-- Repository state: solution restores, builds and tests cleanly (17 projects); the app runs as a single instance with a tray icon, SQLite persistence, the widget runtime and a polished floating dock with themes, proximity magnification, drag reorder, auto-hide, fullscreen awareness, monitor/DPI handling and a settings window. Integrations, automation and the full Liquid Glass design system remain unimplemented (see `docs/ROADMAP.md`).
+- Repository state: solution restores, builds and tests cleanly (19 projects); the app runs as a single instance with a tray icon, SQLite persistence, the widget runtime, shared CPU/RAM metrics, official CPU/memory widgets and a polished floating dock with a system status chip, themes, proximity magnification, drag reorder, auto-hide, fullscreen awareness, monitor/DPI handling and a settings window. Integrations, automation and the full Liquid Glass design system remain unimplemented (see `docs/ROADMAP.md`).
 
 ## Goals
 OpenBar is a native Windows 11 desktop application (dock, widgets, system bridge, integrations, automation) designed for long-term evolution, modularity, low resource usage, and stability.
@@ -246,13 +246,47 @@ Unavailable (persisted instance without a definition)
 ### Remaining visual/runtime limitations
 - Two displays were exercised, including moving the dock to the secondary display; mixed DPI scaling between displays was not validated with a second DPI value.
 - Exclusive fullscreen relies on the shell notification state; a custom-chrome borderless app can be misclassified. Fullscreen was manually verified with Chrome F11, not with a game.
-- Drag/resize/snapping, floating/wide modes, dock-integrated widget surfaces and the final brand/design system remain future work.
+- Drag/resize/snapping, floating/wide modes and a fully embedded widget surface remain future work; Foundation 0.6 adds a read-only compact status chip without removing independent widget windows.
+
+## System Bridge and native widgets (Foundation 0.6)
+
+### Native metrics
+- `OpenBar.SystemBridge` owns the contracts: `ISystemMetrics`, `SystemMetricsSnapshot`, `ISystemMetricsSource`, `SystemMetricsOptions` and `NullSystemMetrics`. It targets plain .NET and has no WinUI dependency.
+- `WindowsSystemMetricsSource` (Infrastructure) is the only Win32 boundary:
+  - **CPU**: `GetSystemTimes` returns cumulative idle, kernel and user `FILETIME` values. Usage is `(1 - idleDelta / (kernelDelta + userDelta)) * 100`, clamped to 0-100. Kernel time already includes idle time, so only kernel + user form the denominator.
+  - **Memory**: `GlobalMemoryStatusEx` with `MEMORYSTATUSEX.dwLength` initialized; totals are `ullTotalPhys`/`ullAvailPhys` in bytes. Used and percentage are derived in managed code.
+- Both P/Invokes are wrapped in `try/catch`; a false return or exception produces an unavailable metric, never a fabricated value.
+
+### Shared, demand-driven service
+- `SystemMetricsService` guarantees one capture per cache window (default 350 ms) with a `SemaphoreSlim` single-flight gate. Concurrent widget schedulers reuse the same snapshot instead of issuing duplicate native calls.
+- CPU needs two cumulative samples. The first refresh returns `CpuAvailable = false` and `CpuUsagePercent = null`; the next refresh uses the delta. Memory is available from the first sample.
+- Optional `Subscribe(observer, interval)` keeps one shared `PeriodicTimer` loop only while subscribers exist. The loop interval follows the smallest requested interval, is clamped to `MinimumInterval`/`MaximumInterval` (250 ms / 10 s), and stops when the last subscriber disposes.
+- Subscriber exceptions are logged and isolated. Cancellation aborts refresh; `DisposeAsync` cancels the loop, awaits it and releases the semaphore.
+- Widgets poll through their existing `IWidgetScheduler`; the service adds sharing and caching but does not create per-widget timers.
+
+### Runtime injection and widgets
+- `WidgetContext.Metrics` exposes `ISystemMetrics`; it defaults to `NullSystemMetrics` in isolated tests and is supplied by `WidgetRuntimeService`/`WidgetInstanceRuntime` in the host.
+- `OpenBar.Widgets.System` contains `openbar.cpu` and `openbar.memory`.
+  - CPU: percentage, activity `ProgressBar`, "Midiendo..." state for the first sample and "No disponible" on failure.
+  - Memory: used/total bytes formatted as `auto` (GB when total >= 1 GB, otherwise MB), `MB` or `GB`, percentage and activity bar.
+- Both widgets deserialize their own `SettingsJson`, clamp intervals to 1-10 s, reschedule on `IWidgetSettingsConsumer` updates and stop their schedule in `StopAsync`.
+- No new migration: settings reuse `WidgetInstances.SettingsJson`. The tools window reads/writes through `IWidgetInstanceService` and `IWidgetRuntime.UpdateSettingsAsync`.
+
+### Dock surface
+- `SystemStatusView` is a compact chip appended to the dock after the settings action, with two lines (`C 18%`, `M 87%`) and a tooltip. It adapts to the existing theme resources and all four dock orientations through the normal layout path; bottom and left were exercised visually, while geometry tests cover every edge.
+- `DockViewModel` subscribes at 1 s only while the dock is active and disposes the subscription when it hides. The chip opens the settings window when tapped.
+- The chip is deliberately read-only and separate from the independent CPU/memory windows, preserving the Foundation 0.3-0.5 lifecycle and window model. A fully embedded interactive widget surface remains future work.
+
+### Cost and limitations
+- Measured 562 ms CPU / 10 s and 89.9 MB private with both widgets and the chip; closing the windows reduced it to 125 ms / 10 s. Moving both widgets to 10 s intervals measured 688 ms / 10 s, so WinUI composition dominates and polling is not the cost driver.
+- CPU is system-wide, not per-core. Memory is physical RAM only. Temperature, battery, storage, network and per-process values are not part of Foundation 0.6.
+- A native failure leaves controlled unavailable values; the service does not retry aggressively outside the normal schedule.
 
 ## Core subsystems (design intent)
 
 ### Widget system
 - Implemented in Foundation 0.3: contracts, registry/discovery, lifecycle manager, scheduler, persistence recovery and independent WinUI windows (see the **Widget Runtime** section above).
-- Official clock widget lives in `modules/System/OpenBar.Widgets.Clock`; additional widgets follow the same definition + view pattern.
+- Official clock widget lives in `modules/System/OpenBar.Widgets.Clock`; the CPU and memory widgets live in `modules/System/OpenBar.Widgets.System` and share `ISystemMetrics` through `WidgetContext`.
 - Third-party plugins: **isolated out-of-process with IPC** (ALC not treated as a security boundary); not implemented yet.
 
 ### Dock engine
@@ -266,9 +300,9 @@ Unavailable (persisted instance without a definition)
 - No claim of true optical refraction when using blur/composition only.
 
 ### System Bridge
-- Centralized Windows/system access: CPU, RAM, temperature, battery, storage, network, processes, volume, mic/audio devices, open apps, monitors.
-- Shared services + centralized scheduler to avoid duplicate polling; event-driven updates where possible.
-- Hardware/sensor access limited by drivers/permissions (graceful degradation).
+- Implemented in Foundation 0.6 for CPU and physical memory: shared contracts/service in `OpenBar.SystemBridge`, native source in `OpenBar.Infrastructure/Windows/SystemBridge`, widgets in `modules/System/OpenBar.Widgets.System` and a compact dock chip.
+- Still future: temperature, battery, storage, network, per-process metrics, audio devices and other sensors. Hardware/driver access must degrade gracefully.
+- Shared cache/single-flight and subscription loop avoid duplicate polling; event-driven sources will be added when a concrete consumer needs another metric.
 
 ### Integrations Hub
 - Independent connectors (AI, Developer, Productivity, Multimedia/other) using official APIs/OAuth/local-compatible methods only.
@@ -294,4 +328,5 @@ Unavailable (persisted instance without a definition)
 - Foundation 0.3 widget runtime lives in `OpenBar.Widgets.Abstractions` (contracts), `OpenBar.WidgetRuntime` (registry, discovery, lifecycle, scheduler, hosted service, DI), `OpenBar.Application/Widgets` (window port) and `OpenBar.App` (`WidgetWindowService`, `WidgetWindow`, dock controls). The clock module lives in `modules/System/OpenBar.Widgets.Clock`.
 - Foundation 0.4 dock lives in `OpenBar.Domain/Dock` + `OpenBar.Domain/Layouts` (entities), `OpenBar.Application/Dock` + `Persistence` (ports/DTOs), `OpenBar.Dock` (pure geometry, auto-hide, composition, controller), `OpenBar.Infrastructure/Persistence` + `Windows/Dock` (EF, Start Menu, shortcuts, launcher, window enumeration), `OpenBar.Presentation/Dock` (view model, icon loader, controls) and `OpenBar.App` (dock window, tools window, window/DPI/auto-hide host).
 - Foundation 0.5 adds `DockTheme`, the `VisualPolish` migration, proximity magnification (`DockMagnificationCalculator`), theme dictionaries, fade transitions, configurable auto-hide delays, `IFullscreenStateService`/`WindowsFullscreenStateService`, target-display DPI and the expanded settings window. `README.md` and `CHANGELOG.md` document the user-facing state.
+- Foundation 0.6 adds `OpenBar.SystemBridge` (contracts, cache/single-flight service, shared subscriptions), `WindowsSystemMetricsSource` (`GetSystemTimes`, `GlobalMemoryStatusEx`), `modules/System/OpenBar.Widgets.System` (`openbar.cpu`, `openbar.memory`), `WidgetContext.Metrics`, the `SystemStatusView` dock chip and system-widget settings in `DockToolsWindow`. No migration was required.
 - This document will evolve via ADRs in `docs/DECISIONS.md`.

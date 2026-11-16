@@ -34,8 +34,8 @@ public sealed class DockLayoutCalculatorTests
     {
         var metrics = DockLayoutCalculator.Calculate(Layout(), pinnedCount: 2, runningCount: 0);
 
-        Assert.Equal(4, metrics.ItemCount);
-        Assert.Equal(4 * 48 + 3 * 10 + 24, metrics.Width);
+        Assert.Equal(5, metrics.ItemCount);
+        Assert.Equal(5 * 48 + 4 * 10 + 24, metrics.Width);
         Assert.Equal(72, metrics.Height);
     }
 
@@ -45,7 +45,7 @@ public sealed class DockLayoutCalculatorTests
         var metrics = DockLayoutCalculator.Calculate(Layout(DockEdge.Left), pinnedCount: 2, runningCount: 0);
 
         Assert.Equal(72, metrics.Width);
-        Assert.Equal(246, metrics.Height);
+        Assert.Equal(304, metrics.Height);
     }
 
     [Fact]
@@ -61,13 +61,13 @@ public sealed class DockLayoutCalculatorTests
     {
         var bounds = DockLayoutCalculator.CalculateBounds(
             Layout(),
-            new DockMetrics(246, 72, 4),
+            new DockMetrics(304, 72, 5),
             new DockRect(0, 0, 1920, 1040),
             1.0);
 
-        Assert.Equal(837, bounds.Left);
+        Assert.Equal(808, bounds.Left);
         Assert.Equal(956, bounds.Top);
-        Assert.Equal(246, bounds.Width);
+        Assert.Equal(304, bounds.Width);
         Assert.Equal(72, bounds.Height);
     }
 
@@ -76,22 +76,22 @@ public sealed class DockLayoutCalculatorTests
     {
         var top = DockLayoutCalculator.CalculateBounds(
             Layout(DockEdge.Top),
-            new DockMetrics(246, 72, 4),
+            new DockMetrics(304, 72, 5),
             new DockRect(0, 0, 1920, 1040),
             1.0);
         Assert.Equal(12, top.Top);
 
         var left = DockLayoutCalculator.CalculateBounds(
             Layout(DockEdge.Left),
-            new DockMetrics(72, 246, 4),
+            new DockMetrics(72, 304, 5),
             new DockRect(0, 0, 1920, 1040),
             1.0);
         Assert.Equal(12, left.Left);
-        Assert.Equal(397, left.Top);
+        Assert.Equal(368, left.Top);
 
         var right = DockLayoutCalculator.CalculateBounds(
             Layout(DockEdge.Right),
-            new DockMetrics(72, 246, 4),
+            new DockMetrics(72, 304, 5),
             new DockRect(0, 0, 1920, 1040),
             1.0);
         Assert.Equal(1836, right.Left);
@@ -102,13 +102,13 @@ public sealed class DockLayoutCalculatorTests
     {
         var bounds = DockLayoutCalculator.CalculateBounds(
             Layout(),
-            new DockMetrics(246, 72, 4),
+            new DockMetrics(304, 72, 5),
             new DockRect(0, 0, 1920, 1040),
             1.5);
 
-        Assert.Equal(369, bounds.Width);
+        Assert.Equal(456, bounds.Width);
         Assert.Equal(108, bounds.Height);
-        Assert.Equal(775, bounds.Left);
+        Assert.Equal(732, bounds.Left);
         Assert.Equal(914, bounds.Top);
     }
 
@@ -117,7 +117,7 @@ public sealed class DockLayoutCalculatorTests
     {
         var bounds = DockLayoutCalculator.CalculateBounds(
             Layout(alignment: DockAlignment.Stretch),
-            new DockMetrics(246, 72, 4),
+            new DockMetrics(304, 72, 5),
             new DockRect(0, 0, 1920, 1040),
             1.0);
 
